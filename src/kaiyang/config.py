@@ -31,7 +31,7 @@ class Settings(BaseSettings):
     host: str = "0.0.0.0"
 
     # ── 天枢 ──
-    tianshu_base_url: str = "http://175.27.157.139:8720"
+    tianshu_base_url: str = "http://localhost:8720"
     tianshu_token: str = ""
 
     # ── 地理编码 ──

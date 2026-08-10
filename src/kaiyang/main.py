@@ -261,7 +261,7 @@ h1{color:#e2c860;margin-bottom:4px;font-size:24px}
 </div>
 <div style="margin-top:20px;font-size:11px;color:#475569">
   <span>API: /api/sources | /api/intel | /api/events | /api/issues</span><br>
-  <span>MCP: POST /mcp (5 tools) | 天枢: 175.27.157.139:8720</span>
+  <span>MCP: POST /mcp (5 tools) | 天枢: 配置中的地址</span>
 </div>
 </div>
 </body>

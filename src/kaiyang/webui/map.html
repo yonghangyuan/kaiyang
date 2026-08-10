@@ -324,7 +324,7 @@ function tianshuSearch(title){
   var w=window.open('','_blank','width=800,height=600');
   if(!w)return;
   w.document.write('<body style="font-family:sans-serif;padding:20px;background:#0a0e27;color:#c9d1d9"><h2 style=color:#e2c860>天枢搜索</h2><p>'+esc(title)+'</p><p style=color:#64748b>连接中...</p>');
-  fetch('http://175.27.157.139:8720/run',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({input:'请搜集关于"'+title+'"的最新报道和背景信息。'})})
+  fetch(API+'/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:'请搜集关于"'+title+'"的相关报道和背景信息。'})})
     .then(function(r){return r.json()}).then(function(d){
       w.document.body.innerHTML='<div style=max-width:700px;margin:0 auto><h2 style=color:#e2c860>天枢简报</h2><pre style=white-space:pre-wrap;font-size:14px;line-height:1.6>'+esc(d.content||'空')+'</pre></div>';
     }).catch(function(){w.document.body.innerHTML='<p style=color:#ef4444>天枢连接失败</p>'});
