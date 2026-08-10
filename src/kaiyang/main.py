@@ -38,30 +38,17 @@ async def _seed_default_sources():
     from .models import Source, _new_id
 
     defaults = [
-        {
-            "name": "CGTN World",
-            "type": "rss",
-            "url": "https://www.cgtn.com/subscribe/rss/section/world.xml",
-            "credibility_tier": 1,  # 官方媒体
-        },
-        {
-            "name": "人民日报",
-            "type": "rss",
-            "url": "http://www.people.com.cn/rss/politics.xml",
-            "credibility_tier": 1,  # 官方媒体
-        },
-        {
-            "name": "CGTN China",
-            "type": "rss",
-            "url": "https://www.cgtn.com/subscribe/rss/section/china.xml",
-            "credibility_tier": 1,
-        },
-        {
-            "name": "CGTN Business",
-            "type": "rss",
-            "url": "https://www.cgtn.com/subscribe/rss/section/business.xml",
-            "credibility_tier": 1,
-        },
+        # Tier 1 — 官方/权威
+        {"name": "CGTN World", "type": "rss", "url": "https://www.cgtn.com/subscribe/rss/section/world.xml", "credibility_tier": 1},
+        {"name": "CGTN China", "type": "rss", "url": "https://www.cgtn.com/subscribe/rss/section/china.xml", "credibility_tier": 1},
+        {"name": "CGTN Business", "type": "rss", "url": "https://www.cgtn.com/subscribe/rss/section/business.xml", "credibility_tier": 1},
+        {"name": "China Daily World", "type": "rss", "url": "http://www.chinadaily.com.cn/rss/world_rss.xml", "credibility_tier": 1},
+        {"name": "China Daily China", "type": "rss", "url": "http://www.chinadaily.com.cn/rss/china_rss.xml", "credibility_tier": 1},
+        {"name": "Ecns.cn", "type": "rss", "url": "http://www.ecns.cn/rss/rss.xml", "credibility_tier": 1},
+        # Tier 2 — 国内综合
+        {"name": "人民日报", "type": "rss", "url": "http://www.people.com.cn/rss/politics.xml", "credibility_tier": 2},
+        # Tier 1 — 全球事件
+        {"name": "GDELT Global", "type": "gdelt", "url": "gdelt", "credibility_tier": 1},
     ]
 
     async with async_session() as db:
@@ -206,6 +193,8 @@ from .api.entities import router as entities_router
 from .api.search import router as search_router
 from .api.chat import router as chat_router
 from .api.annotations import router as annotations_router
+from .api.export import router as export_router
+from .api.trends import router as trends_router
 from .mcp.handler import router as mcp_router
 
 app.include_router(sources_router)
@@ -216,6 +205,8 @@ app.include_router(entities_router)
 app.include_router(search_router)
 app.include_router(chat_router)
 app.include_router(annotations_router)
+app.include_router(export_router)
+app.include_router(trends_router)
 app.include_router(mcp_router)
 
 

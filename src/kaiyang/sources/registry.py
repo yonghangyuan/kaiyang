@@ -31,7 +31,9 @@ def list_source_types() -> list[str]:
 # 自动注册内置数据源
 def _auto_register():
     from .rss_source import RSSSource
+    from .gdelt_source import GDELTSource
     register_source("rss", RSSSource)
+    register_source("gdelt", GDELTSource)
 
 
 _auto_register()

@@ -150,3 +150,38 @@ async def entity_dossier(entity_id: str):
         "related_events": related_events,
         "relations": rels,
     }
+
+
+@router.get("/{entity_id}/graph")
+async def entity_graph(entity_id: str):
+    """实体关系图谱 (D3 force layout 格式)。"""
+    async with async_session() as db:
+        result = await db.execute(select(Entity).where(Entity.id == entity_id))
+        entity = result.scalar_one_or_none()
+        if not entity:
+            raise HTTPException(404, f"Entity {entity_id} not found")
+
+        nodes = [{"id": entity.id, "name": entity.name, "type": entity.type,
+                   "group": {"country":1,"institution":2,"person":3}.get(entity.type,4)}]
+        links = []
+        seen = {entity.id}
+
+        from ..models import entity_relations
+        for direction, src_col, tgt_col in [
+            ("out", entity_relations.c.source_entity, entity_relations.c.target_entity),
+            ("in", entity_relations.c.target_entity, entity_relations.c.source_entity),
+        ]:
+            rel_result = await db.execute(select(entity_relations).where(src_col == entity_id).limit(20))
+            for row in rel_result:
+                target_id = row[tgt_col]
+                if target_id not in seen and len(nodes) < 50:
+                    seen.add(target_id)
+                    tgt = (await db.execute(select(Entity).where(Entity.id == target_id))).scalar_one_or_none()
+                    if tgt:
+                        nodes.append({"id": tgt.id, "name": tgt.name, "type": tgt.type,
+                                      "group": {"country":1,"institution":2,"person":3}.get(tgt.type,4)})
+                        links.append({"source": entity.id if direction == "out" else tgt.id,
+                                      "target": tgt.id if direction == "out" else entity.id,
+                                      "type": row.relation_type})
+
+    return {"entity": {"id": entity.id, "name": entity.name}, "nodes": nodes, "links": links}
