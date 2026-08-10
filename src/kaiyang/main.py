@@ -163,6 +163,29 @@ async def request_timeout_middleware(request: Request, call_next):
         return _JSONResponse(status_code=504, content={"error": True, "message": "Request timeout (60s)"})
 
 
+# ── React SPA 首页 ───────────────────────────────────────────
+
+from fastapi.responses import FileResponse as _FileResponse
+import os as _os
+
+@app.get("/")
+async def spa_root():
+    """React SPA 首页。"""
+    index_path = _os.path.join(_os.path.dirname(__file__), "webui", "index.html")
+    if _os.path.exists(index_path):
+        return _FileResponse(index_path)
+    return HTMLResponse("<h1>Frontend not built. Run: cd frontend && npm run build</h1>")
+
+
+@app.get("/assets/{path:path}")
+async def spa_assets(path: str):
+    """React SPA 静态资源。"""
+    file_path = _os.path.join(_os.path.dirname(__file__), "webui", "assets", path)
+    if _os.path.exists(file_path):
+        return _FileResponse(file_path)
+    return HTMLResponse("", status_code=404)
+
+
 # ── WebSocket 实时推送 ────────────────────────────────────────
 
 from fastapi import WebSocket, WebSocketDisconnect
@@ -212,9 +235,9 @@ app.include_router(mcp_router)
 
 # ── 基础路由 ───────────────────────────────────────────────────
 
-@app.get("/")
-async def root():
-    """首页导航仪表盘。"""
+@app.get("/old-dashboard")
+async def old_dashboard():
+    """旧版导航仪表盘。"""
     html = """<!DOCTYPE html>
 <html lang="zh">
 <head>
