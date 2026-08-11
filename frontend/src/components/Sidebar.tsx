@@ -1,5 +1,7 @@
 import { useState } from 'react'
 import EntityGraph from './EntityGraph'
+import WordCloud from './WordCloud'
+import TrendChart from './TrendChart'
 
 interface Briefing { query: string; summary: string; point_count: number; timeline_count: number; web_count?: number; points: any[]; timeline: any[] }
 
@@ -56,11 +58,9 @@ export default function Sidebar({ briefing, chatMessages, onSearch, onChat, stat
           </div>
         ) : tab==='feed' ? (
           <div style={{fontSize:12}}>
+            <WordCloud />
+            <TrendChart />
             {graphEntity && <EntityGraph entityId={graphEntity} onClose={()=>setGraphEntity(null)} />}
-            <div style={{color:'var(--fg-dim)',padding:8,textAlign:'center'}}>
-              Click an entity to view its relationship graph
-              <br/><small>Entity graph API available at /api/entities/{'{id}'}/graph</small>
-            </div>
           </div>
         ) : <div style={{ textAlign: 'center', padding: 40, color: 'var(--fg-dim)', fontSize: 13 }}>Enter search keywords</div>)}
         {tab === 'chat' && (
