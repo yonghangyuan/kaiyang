@@ -1,10 +1,10 @@
 import { useState, useEffect } from 'react'
 import MapView from './components/MapView'
 import Sidebar from './components/Sidebar'
+import { api } from './api'
+import type { GeoPoint, Briefing, Annotation, Stats } from './api'
 
-interface GeoPoint { id: string; title: string; lat: number; lng: number; country_code?: string; severity?: number; confidence?: number; source_count?: number; time_start?: string; published_at?: string; type?: string; url?: string }
-interface Briefing { query: string; summary: string; point_count: number; timeline_count: number; web_count?: number; points: GeoPoint[]; timeline: any[] }
-interface Annotation { id: string; name: string; description?: string; type: string; coordinates: any; style?: any }
+export type { GeoPoint, Briefing, Annotation, Stats }
 
 export default function App() {
   const [events, setEvents] = useState<GeoPoint[]>([])
@@ -13,66 +13,39 @@ export default function App() {
   const [briefing, setBriefing] = useState<Briefing | null>(null)
   const [chatMessages, setChatMessages] = useState<{role:string;content:string;time:string}[]>([])
   const [status, setStatus] = useState('ready')
-  const [stats, setStats] = useState({sources:0, intel:0, events:0, entities:0})
-
-  const loadStats = async () => {
-    try {
-      const [s, i, e, ent] = await Promise.all([
-        fetch('/api/sources').then(r=>r.json()),
-        fetch('/api/intel?limit=1').then(r=>r.json()),
-        fetch('/api/events?limit=1').then(r=>r.json()),
-        fetch('/api/entities/stats/summary').then(r=>r.json()),
-      ])
-      setStats({sources:s.count||0, intel:i.total||0, events:e.count||0, entities:ent.total||0})
-    } catch {}
-  }
+  const [stats, setStats] = useState<Stats>({sources:0, intel:0, events:0, entities:0})
 
   const loadEvents = async () => {
-    try {
-      const r = await fetch('/api/map/plot', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({limit:100})})
-      const d = await r.json(); setEvents(d.points||[]); setStatus('Events: '+d.count)
-    } catch { setStatus('load failed') }
+    try { const d = await api.events(); setEvents(d.points||[]); setStatus('Events: '+d.count) } catch { setStatus('load failed') }
   }
   const loadAnnotations = async () => {
-    try { const r = await fetch('/api/annotations'); setAnnotations((await r.json()).annotations||[]) } catch {}
+    try { const d = await api.annotations.list(); setAnnotations(d.annotations||[]) } catch {}
+  }
+  const loadStats = async () => {
+    try { setStats(await api.stats()) } catch {}
   }
   useEffect(() => { loadEvents(); loadAnnotations(); loadStats() }, [])
 
   const doSearch = async (query:string) => {
     setStatus('searching...')
-    try {
-      const r = await fetch('/api/search/briefing', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({query,limit:30})})
-      const d = await r.json(); setSearchResults(d.points||[]); setBriefing(d)
-      setStatus(d.point_count+' points, '+d.timeline_count+' timeline')
-    } catch(e:any) { setStatus('search failed: '+e.message) }
+    try { const d = await api.search(query); setSearchResults(d.points||[]); setBriefing(d); setStatus(d.point_count+' points') } catch(e:any) { setStatus('search failed') }
   }
 
   const doChat = async (msg:string) => {
     const now = new Date().toLocaleTimeString()
     setChatMessages(p=>[...p,{role:'user',content:msg,time:now}])
     setStatus('thinking...')
-    const [chatR,searchR] = await Promise.allSettled([
-      fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:msg})}),
-      fetch('/api/search/briefing',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({query:msg,limit:20})})
-    ])
+    const [chatR,searchR] = await Promise.allSettled([api.chat(msg), api.search(msg, 20)])
     if(chatR.status==='fulfilled'){
-      try{
-        const d=await chatR.value.json()
-        setChatMessages(p=>[...p,{role:'ai',content:(d.reply||'').replace(/\*\*/g,'').replace(/^#{1,4}\s/gm,'').replace(/^---+/gm,'').replace(/```[\s\S]*?```/g,'').replace(/`([^`]+)`/g,'$1').replace(/^>\s/gm,'').trim(),time:new Date().toLocaleTimeString()}])
-        setStatus(d.model||'replied')
-        const ar=await fetch('/api/annotations/from-text',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text:d.reply})})
-        const ad=await ar.json(); if(ad.ok){loadAnnotations();setStatus(s=>s+' | '+ad.coordinates_count+' annotations')}
-      }catch{}
+      const d=chatR.value
+      setChatMessages(p=>[...p,{role:'ai',content:(d.reply||'').replace(/\*\*/g,'').replace(/^#{1,4}\s/gm,'').replace(/^---+/gm,'').replace(/```[\s\S]*?```/g,'').replace(/`([^`]+)`/g,'$1').trim(),time:new Date().toLocaleTimeString()}])
+      setStatus(d.model||'replied')
+      try{const ad=await api.annotations.fromText(d.reply);if(ad.ok){loadAnnotations();setStatus(s=>s+' | '+ad.coordinates_count+' annotations')}}catch{}
     }
-    if(searchR.status==='fulfilled'){
-      try{const d=await searchR.value.json();setSearchResults(d.points||[]);setBriefing(d)}catch{}
-    }
-    if(chatR.status==='rejected' && searchR.status==='rejected'){
-      setChatMessages(p=>[...p,{role:'ai',content:'connection failed',time:now}])
-    }
+    if(searchR.status==='fulfilled'){setSearchResults(searchR.value.points||[]);setBriefing(searchR.value)}
   }
 
-  const clearAnnotations = () => { fetch('/api/annotations',{method:'DELETE'}); loadAnnotations() }
+  const clearAnnotations = () => { api.annotations.clear(); loadAnnotations() }
 
   return (
     <div style={{display:'flex',height:'100vh',background:'#0a0e27',color:'#c9d1d9',fontFamily:'-apple-system,sans-serif'}}>
