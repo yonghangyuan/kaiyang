@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import MapView from './components/MapView'
+import GlobeView from './components/GlobeView'
 import Sidebar from './components/Sidebar'
 import { api } from './api'
 import type { GeoPoint, Briefing, Annotation, Stats } from './api'
@@ -14,6 +15,7 @@ export default function App() {
   const [chatMessages, setChatMessages] = useState<{role:string;content:string;time:string}[]>([])
   const [status, setStatus] = useState('ready')
   const [stats, setStats] = useState<Stats>({sources:0, intel:0, events:0, entities:0})
+  const [viewMode, setViewMode] = useState<'2d'|'3d'>('2d')
 
   const loadEvents = async () => {
     try { const d = await api.events(); setEvents(d.points||[]); setStatus('Events: '+d.count) } catch { setStatus('load failed') }
@@ -90,9 +92,18 @@ export default function App() {
         <span style={{letterSpacing:'0.1em'}}>KAIYANG SYS:ONLINE</span>
         <span style={{color:'var(--fg-dim)',opacity:0.5}}>| TC-{status.includes('critical')?'3':status.includes('high')?'2':'1'}/5</span>
         <span style={{color:'var(--fg-dim)',opacity:0.5}}>| {stats.sources}SRC | {stats.intel}ART | {stats.entities}ENT</span>
+        <button onClick={() => setViewMode(v => v==='2d'?'3d':'2d')}
+          style={{pointerEvents:'auto',background:'var(--bg-card)',border:'1px solid var(--border)',color:'var(--fg-dim)',padding:'2px 8px',borderRadius:4,fontSize:10,cursor:'pointer',fontFamily:'monospace'}}>
+          {viewMode==='2d'?'🌍 3D':'🗺️ 2D'}
+        </button>
       </div>
       <div style={{display:'flex',flex:1,overflow:'hidden'}}>
-        <div style={{flex:1}}><MapView events={events} searchResults={searchResults} annotations={annotations}/></div>
+        <div style={{flex:1}}>
+          {viewMode === '2d'
+            ? <MapView events={events} searchResults={searchResults} annotations={annotations}/>
+            : <GlobeView events={[...events, ...searchResults]}/>
+          }
+        </div>
         <Sidebar briefing={briefing} chatMessages={chatMessages} onSearch={doSearch} onChat={doChat} onClearAnnotations={clearAnnotations} status={status} stats={stats}/>
       </div>
       {tickerItems.length > 0 && (
