@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import MapView from './components/MapView'
-import GlobeView from './components/GlobeView'
+// import GlobeView from './components/GlobeView'  // TODO: fix globe.gl chunk loading
 import Sidebar from './components/Sidebar'
 import { api } from './api'
 import type { GeoPoint, Briefing, Annotation, Stats } from './api'
@@ -101,7 +101,7 @@ export default function App() {
         <div style={{flex:1}}>
           {viewMode === '2d'
             ? <MapView events={events} searchResults={searchResults} annotations={annotations}/>
-            : <GlobeView events={[...events, ...searchResults]}/>
+            : <div style={{display:'flex',alignItems:'center',justifyContent:'center',height:'100%',color:'var(--fg-dim)',fontSize:14}}>3D Globe loading... (globe.gl integration in progress)</div>
           }
         </div>
         <Sidebar briefing={briefing} chatMessages={chatMessages} onSearch={doSearch} onChat={doChat} onClearAnnotations={clearAnnotations} status={status} stats={stats}/>
