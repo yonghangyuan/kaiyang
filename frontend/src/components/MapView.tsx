@@ -55,9 +55,11 @@ export default function MapView({ events, searchResults, annotations }: Props) {
       const sev = e.severity || 1
       const c = sev >= 7 ? '#ef4444' : sev >= 5 ? '#f97316' : sev >= 3 ? '#eab308' : '#22c55e'
       const r = Math.min(6 + sev * 1.5, 20)
-      L.circleMarker([e.lat, e.lng], { radius: r, fillColor: c, color: '#fff', weight: 1, fillOpacity: 0.85 })
+      const m = L.circleMarker([e.lat, e.lng], { radius: r, fillColor: c, color: '#fff', weight: 1, fillOpacity: 0.85 })
         .bindPopup(`<b>${esc(e.title||'')}</b><br><small>${e.country_code||''} | importance:${sev}/10 | ${e.source_count||0}sources</small>`)
         .addTo(g['Events'])
+      if (sev >= 7) (m as any)._path?.classList?.add('severity-critical')
+      else if (sev >= 5) (m as any)._path?.classList?.add('severity-high')
     })
 
     // Earthquakes layer
