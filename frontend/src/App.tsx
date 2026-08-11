@@ -100,12 +100,10 @@ export default function App() {
             : <GlobeView events={[...events, ...searchResults]}/>
           }
           <button onClick={() => setViewMode(v => v==='2d'?'3d':'2d')}
-            style={{position:'absolute',bottom:12,right:12,zIndex:1000,
+            style={{position:'absolute',top:80,left:10,zIndex:1000,
               background:'var(--bg-card)',border:'1px solid var(--border)',color:'var(--fg)',
-              padding:'6px 14px',borderRadius:6,fontSize:13,cursor:'pointer',
-              boxShadow:'0 2px 8px rgba(0,0,0,0.5)'}}
-            title={viewMode==='2d'?'Switch to 3D Globe':'Switch to 2D Map'}>
-            {viewMode==='2d'?'🌍 3D Globe':'🗺️ 2D Map'}
+              padding:'4px 10px',borderRadius:4,fontSize:12,cursor:'pointer'}}>
+            {viewMode==='2d'?'🌍':'🗺️'}
           </button>
         </div>
         <Sidebar briefing={briefing} chatMessages={chatMessages} onSearch={doSearch} onChat={doChat} onClearAnnotations={clearAnnotations} status={status} stats={stats}/>
