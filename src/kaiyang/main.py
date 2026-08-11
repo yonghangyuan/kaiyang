@@ -38,14 +38,25 @@ async def _seed_default_sources():
     from .models import Source, _new_id
 
     defaults = [
-        # Tier 1 — 官方/权威新闻
+        # Tier 1 — CGTN 系列 (中国官方英文)
         {"name": "CGTN World", "type": "rss", "url": "https://www.cgtn.com/subscribe/rss/section/world.xml", "credibility_tier": 1},
         {"name": "CGTN China", "type": "rss", "url": "https://www.cgtn.com/subscribe/rss/section/china.xml", "credibility_tier": 1},
         {"name": "CGTN Business", "type": "rss", "url": "https://www.cgtn.com/subscribe/rss/section/business.xml", "credibility_tier": 1},
+        {"name": "CGTN Politics", "type": "rss", "url": "https://www.cgtn.com/subscribe/rss/section/politics.xml", "credibility_tier": 1},
+        {"name": "CGTN Tech", "type": "rss", "url": "https://www.cgtn.com/subscribe/rss/section/tech-sci.xml", "credibility_tier": 1},
+        {"name": "CGTN Opinion", "type": "rss", "url": "https://www.cgtn.com/subscribe/rss/section/opinion.xml", "credibility_tier": 2},
+        # Tier 1 — China Daily 系列
         {"name": "China Daily World", "type": "rss", "url": "http://www.chinadaily.com.cn/rss/world_rss.xml", "credibility_tier": 1},
         {"name": "China Daily China", "type": "rss", "url": "http://www.chinadaily.com.cn/rss/china_rss.xml", "credibility_tier": 1},
+        {"name": "China Daily Opinion", "type": "rss", "url": "http://www.chinadaily.com.cn/rss/opinion_rss.xml", "credibility_tier": 2},
+        {"name": "China Daily Business", "type": "rss", "url": "http://www.chinadaily.com.cn/rss/bizchina_rss.xml", "credibility_tier": 1},
+        # Tier 1 — 其他中国英文
+        {"name": "Xinhua English", "type": "rss", "url": "http://www.xinhuanet.com/english/rss/worldrss.xml", "credibility_tier": 1},
         {"name": "Ecns.cn", "type": "rss", "url": "http://www.ecns.cn/rss/rss.xml", "credibility_tier": 1},
+        # Tier 2 — 中文源
         {"name": "人民日报", "type": "rss", "url": "http://www.people.com.cn/rss/politics.xml", "credibility_tier": 2},
+        # Tier 1 — 国际通讯社 (国内可访问)
+        {"name": "TASS", "type": "rss", "url": "https://tass.com/rss/v2.xml", "credibility_tier": 1},
         # Tier 1 — 实时API
         {"name": "USGS Earthquakes", "type": "usgs", "url": "usgs", "credibility_tier": 1},
         {"name": "GDELT Global", "type": "gdelt", "url": "gdelt", "credibility_tier": 1},
