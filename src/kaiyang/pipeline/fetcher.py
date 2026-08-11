@@ -19,6 +19,7 @@ from ..sources.base import AbstractSource
 from ..sources.registry import get_source_class
 from .auto_geocode import geocode_item
 from .source_health import record_fetch_success, record_fetch_error
+from ..sources.retry import source_retry
 
 
 class IntelFetcher:
@@ -75,7 +76,12 @@ class IntelFetcher:
                     continue
 
                 source = source_cls(source_record)
-                items = await source.fetch_and_parse()
+                # 带重试的抓取（参考 MediaCrawler tenacity 模式）
+                try:
+                    wrapped_fetch = source_retry()(source.fetch_and_parse)
+                    items = await wrapped_fetch()
+                except Exception:
+                    items = []  # 重试耗尽后返回空
                 self._stats["fetched"] += len(items)
 
                 # 批量存入数据库（去重）

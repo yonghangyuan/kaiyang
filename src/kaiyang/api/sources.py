@@ -10,7 +10,8 @@ from pydantic import BaseModel
 from ..db import get_db, async_session
 from ..models import Source
 from ..sources.registry import list_source_types
-from ..pipeline.fetcher import fetcher
+from .services import pipeline_service
+from ..pipeline.fetcher import fetcher  # 仅用于读取 stats
 
 router = APIRouter(prefix="/api/sources", tags=["sources"])
 
@@ -135,14 +136,14 @@ async def get_source_types():
 @router.post("/fetch")
 async def trigger_fetch():
     """手动触发一次全量抓取。"""
-    stats = await fetcher.fetch_all_sources()
+    stats = await pipeline_service.trigger_fetch()
     return {"ok": True, "stats": stats}
 
 
 @router.get("/fetch/status")
 async def fetch_status():
     """查看抓取器统计数据。"""
-    return {"running": fetcher._running, "stats": fetcher.stats}
+    return {"running": pipeline_service._fetch_lock.locked(), "stats": fetcher.stats}
 
 
 @router.post("/evaluate")
