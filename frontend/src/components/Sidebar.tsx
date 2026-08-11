@@ -10,25 +10,23 @@ interface Props {
 }
 
 export default function Sidebar({ briefing, chatMessages, onSearch, onChat, status, onClearAnnotations, stats }: Props) {
-  const [tab, setTab] = useState<'search'|'chat'>('chat')
+  const [tab, setTab] = useState<'live'|'feed'|'chat'>('live')
   const [input, setInput] = useState('')
-  const send = () => { const msg = input.trim(); if (!msg) return; setInput(''); tab === 'search' ? onSearch(msg) : onChat(msg) }
+  const send = () => { const msg = input.trim(); if (!msg) return; setInput(''); tab === 'live' ? onSearch(msg) : onChat(msg) }
 
   const tColor = (t: any) => t.type==='web'?'#a855f7':t.type==='event'?'#eab308':'#3b82f6'
 
   return (
     <div style={{ width: 380, background: 'var(--bg-card)', borderLeft: '1px solid var(--border)', display: 'flex', flexDirection: 'column' }}>
       <div style={{ display: 'flex', borderBottom: '1px solid var(--border)' }}>
-        <button onClick={() => setTab('search')} style={{
-          flex: 1, padding: 10, textAlign: 'center' as const, fontSize: 13, fontWeight: 600, cursor: 'pointer',
-          background: tab==='search' ? '#0f1630' : '#131a35', color: tab==='search' ? '#e2c860' : '#64748b',
-          border: 'none', borderBottom: tab==='search' ? '2px solid #e2c860' : '2px solid transparent'
-        }}>Search</button>
-        <button onClick={() => setTab('chat')} style={{
-          flex: 1, padding: 10, textAlign: 'center' as const, fontSize: 13, fontWeight: 600, cursor: 'pointer',
-          background: tab==='chat' ? '#0f1630' : '#131a35', color: tab==='chat' ? '#e2c860' : '#64748b',
-          border: 'none', borderBottom: tab==='chat' ? '2px solid #e2c860' : '2px solid transparent'
-        }}>Chat</button>
+        {(['live','feed','chat'] as const).map(t => (
+          <button key={t} onClick={() => setTab(t)} style={{
+            flex: 1, padding: 8, textAlign: 'center' as const, fontSize: 11, fontWeight: 700, cursor: 'pointer',
+            letterSpacing: '0.05em', fontFamily: 'monospace',
+            background: 'transparent', color: tab===t ? 'var(--accent)' : 'var(--fg-dim)',
+            border: 'none', borderBottom: tab===t ? '2px solid var(--accent)' : '2px solid transparent'
+          }}>{t.toUpperCase()}</button>
+        ))}
       </div>
       {stats && <div style={{ display:'flex', gap:8, padding:'6px 12px', background:'#131a35', borderBottom:'1px solid var(--border)', fontSize:11 }}>
         <span title="Sources">{stats.sources}源</span>
@@ -38,7 +36,7 @@ export default function Sidebar({ briefing, chatMessages, onSearch, onChat, stat
         <span style={{marginLeft:'auto',color:'#64748b'}}>●Event ●EQ ●Social ●Search ●Anno</span>
       </div>}
       <div style={{ flex: 1, overflow: 'auto', padding: '10px 12px', fontSize: 13 }}>
-        {tab === 'search' && (briefing ? (
+        {tab === 'live' && (briefing ? (
           <div>
             {briefing.summary && <div style={{ background: 'var(--bg-card)', padding: 10, borderRadius: 6, marginBottom: 12, borderLeft: '3px solid var(--accent)', lineHeight: 1.6 }}>{briefing.summary.replace(/\*\*/g,'').replace(/^#{1,4}\s/gm,'').replace(/^---+/gm,'').replace(/```[\s\S]*?```/g,'').replace(/`([^`]+)`/g,'$1').trim()}</div>}
             <div style={{ color: 'var(--yellow)', marginBottom: 4 }}>Timeline ({briefing.timeline_count}{briefing.web_count ? ' + web'+briefing.web_count : ''})</div>
@@ -73,7 +71,7 @@ export default function Sidebar({ briefing, chatMessages, onSearch, onChat, stat
       <div style={{ fontSize: 11, padding: '4px 12px', background: '#0a0e27', color: 'var(--fg-dim)' }}>{status}</div>
       <div style={{ background: 'var(--bg-card)', padding: 8, borderTop: '1px solid var(--border)', display: 'flex', gap: 6 }}>
         <input value={input} onChange={e => setInput(e.target.value)} onKeyPress={e => e.key==='Enter'&&send()}
-          placeholder={tab==='search'?'Search...':'Message...'}
+          placeholder={tab==='chat'?'Message...':'Search...'}
           style={{ flex: 1, background: 'var(--bg-card)', border: '1px solid var(--border)', color: 'var(--fg)', padding: '8px 10px', borderRadius: 4, fontSize: 13 }} />
         <button onClick={send} style={{ background: 'var(--accent)', color: '#fff', border: 'none', padding: '8px 14px', borderRadius: 4, fontSize: 12, cursor: 'pointer' }}>Send</button>
         {onClearAnnotations && <button onClick={onClearAnnotations} style={{ background: 'var(--bg-hover)', color: '#fff', border: 'none', padding: '8px 10px', borderRadius: 4, fontSize: 11, cursor: 'pointer' }}>Clear</button>}
