@@ -38,21 +38,17 @@ async def _seed_default_sources():
     from .models import Source, _new_id
 
     defaults = [
-        # Tier 1 — 官方/权威
+        # Tier 1 — 官方/权威新闻
         {"name": "CGTN World", "type": "rss", "url": "https://www.cgtn.com/subscribe/rss/section/world.xml", "credibility_tier": 1},
         {"name": "CGTN China", "type": "rss", "url": "https://www.cgtn.com/subscribe/rss/section/china.xml", "credibility_tier": 1},
         {"name": "CGTN Business", "type": "rss", "url": "https://www.cgtn.com/subscribe/rss/section/business.xml", "credibility_tier": 1},
         {"name": "China Daily World", "type": "rss", "url": "http://www.chinadaily.com.cn/rss/world_rss.xml", "credibility_tier": 1},
         {"name": "China Daily China", "type": "rss", "url": "http://www.chinadaily.com.cn/rss/china_rss.xml", "credibility_tier": 1},
         {"name": "Ecns.cn", "type": "rss", "url": "http://www.ecns.cn/rss/rss.xml", "credibility_tier": 1},
-        # Tier 2 — 国内综合
         {"name": "人民日报", "type": "rss", "url": "http://www.people.com.cn/rss/politics.xml", "credibility_tier": 2},
-        # Tier 1 — 全球事件
-        {"name": "GDELT Global", "type": "gdelt", "url": "gdelt", "credibility_tier": 1},
+        # Tier 1 — 实时API
         {"name": "USGS Earthquakes", "type": "usgs", "url": "usgs", "credibility_tier": 1},
-        {"name": "Weibo 搜索", "type": "weibo", "url": "weibo", "credibility_tier": 3, "config": {"keywords": "国际,乌克兰,中东,日本,韩国"}},
-        {"name": "知乎 搜索", "type": "zhihu", "url": "zhihu", "credibility_tier": 2, "config": {"keywords": "国际局势,中东,乌克兰"}},
-        {"name": "小红书 搜索", "type": "xhs", "url": "xhs", "credibility_tier": 3, "config": {"keywords": "国际新闻,乌克兰,中东"}},
+        {"name": "GDELT Global", "type": "gdelt", "url": "gdelt", "credibility_tier": 1},
     ]
 
     async with async_session() as db:
