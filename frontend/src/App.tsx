@@ -24,6 +24,22 @@ export default function App() {
   const loadStats = async () => {
     try { setStats(await api.stats()) } catch {}
   }
+  // SSE 实时连接 (参考 Redroom SSE data pump)
+  useEffect(() => {
+    const es = new EventSource('/api/sse')
+    es.onmessage = (evt) => {
+      try {
+        const d = JSON.parse(evt.data)
+        if (d.type === 'fetch_complete' && d.new_items > 0) {
+          setStatus(`new: ${d.new_items} items` + (d.new_events ? ` +${d.new_events} events` : ''))
+          setTimeout(() => { loadEvents(); loadStats() }, 2000)
+        }
+      } catch {}
+    }
+    es.onerror = () => { /* auto-reconnect built into EventSource */ }
+    return () => es.close()
+  }, [])
+
   useEffect(() => { loadEvents(); loadAnnotations(); loadStats() }, [])
 
   const doSearch = async (query:string) => {
