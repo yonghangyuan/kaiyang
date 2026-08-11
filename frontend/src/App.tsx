@@ -13,6 +13,19 @@ export default function App() {
   const [briefing, setBriefing] = useState<Briefing | null>(null)
   const [chatMessages, setChatMessages] = useState<{role:string;content:string;time:string}[]>([])
   const [status, setStatus] = useState('ready')
+  const [stats, setStats] = useState({sources:0, intel:0, events:0, entities:0})
+
+  const loadStats = async () => {
+    try {
+      const [s, i, e, ent] = await Promise.all([
+        fetch('/api/sources').then(r=>r.json()),
+        fetch('/api/intel?limit=1').then(r=>r.json()),
+        fetch('/api/events?limit=1').then(r=>r.json()),
+        fetch('/api/entities/stats/summary').then(r=>r.json()),
+      ])
+      setStats({sources:s.count||0, intel:i.total||0, events:e.count||0, entities:ent.total||0})
+    } catch {}
+  }
 
   const loadEvents = async () => {
     try {
@@ -23,7 +36,7 @@ export default function App() {
   const loadAnnotations = async () => {
     try { const r = await fetch('/api/annotations'); setAnnotations((await r.json()).annotations||[]) } catch {}
   }
-  useEffect(() => { loadEvents(); loadAnnotations() }, [])
+  useEffect(() => { loadEvents(); loadAnnotations(); loadStats() }, [])
 
   const doSearch = async (query:string) => {
     setStatus('searching...')
@@ -64,7 +77,7 @@ export default function App() {
   return (
     <div style={{display:'flex',height:'100vh',background:'#0a0e27',color:'#c9d1d9',fontFamily:'-apple-system,sans-serif'}}>
       <div style={{flex:1}}><MapView events={events} searchResults={searchResults} annotations={annotations}/></div>
-      <Sidebar briefing={briefing} chatMessages={chatMessages} onSearch={doSearch} onChat={doChat} onClearAnnotations={clearAnnotations} status={status}/>
+      <Sidebar briefing={briefing} chatMessages={chatMessages} onSearch={doSearch} onChat={doChat} onClearAnnotations={clearAnnotations} status={status} stats={stats}/>
     </div>
   )
 }

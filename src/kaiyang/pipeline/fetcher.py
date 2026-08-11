@@ -120,10 +120,11 @@ class IntelFetcher:
         stored = 0
         async with async_session() as db:
             for item in items:
+                # 自动地理标注（从标题提取国家名）
+                await geocode_item(item)
+                # 使用 merge 避免 SAWarning: 已存在则更新，不存在则插入
                 try:
-                    # 自动地理标注（从标题提取国家名）
-                    await geocode_item(item)
-                    db.add(item)
+                    await db.merge(item)
                     await db.commit()
                     stored += 1
                 except Exception:

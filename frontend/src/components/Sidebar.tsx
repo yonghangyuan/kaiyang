@@ -6,9 +6,10 @@ interface Props {
   briefing: Briefing | null; chatMessages: {role:string;content:string;time:string}[]
   onSearch: (q: string) => void; onChat: (msg: string) => void; status: string
   onClearAnnotations?: () => void
+  stats?: {sources:number; intel:number; events:number; entities:number}
 }
 
-export default function Sidebar({ briefing, chatMessages, onSearch, onChat, status, onClearAnnotations }: Props) {
+export default function Sidebar({ briefing, chatMessages, onSearch, onChat, status, onClearAnnotations, stats }: Props) {
   const [tab, setTab] = useState<'search'|'chat'>('chat')
   const [input, setInput] = useState('')
   const send = () => { const msg = input.trim(); if (!msg) return; setInput(''); tab === 'search' ? onSearch(msg) : onChat(msg) }
@@ -29,6 +30,13 @@ export default function Sidebar({ briefing, chatMessages, onSearch, onChat, stat
           border: 'none', borderBottom: tab==='chat' ? '2px solid #e2c860' : '2px solid transparent'
         }}>Chat</button>
       </div>
+      {stats && <div style={{ display:'flex', gap:8, padding:'6px 12px', background:'#131a35', borderBottom:'1px solid #1e2a4a', fontSize:11 }}>
+        <span title="Sources">{stats.sources}源</span>
+        <span title="Intel items" style={{color:'#3b82f6'}}>{stats.intel}条</span>
+        <span title="Events" style={{color:'#eab308'}}>{stats.events}事件</span>
+        <span title="Entities" style={{color:'#a855f7'}}>{stats.entities}实体</span>
+        <span style={{marginLeft:'auto',color:'#64748b'}}>●Event ●EQ ●Search ●Anno</span>
+      </div>}
       <div style={{ flex: 1, overflow: 'auto', padding: '10px 12px', fontSize: 13 }}>
         {tab === 'search' && (briefing ? (
           <div>
