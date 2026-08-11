@@ -34,10 +34,14 @@ def _auto_register():
     from .gdelt_source import GDELTSource
     from .usgs_source import USGSSource
     from .weibo_source import WeiboSource
+    from .zhihu_source import ZhihuSource
+    from .xhs_source import XHSSource
     register_source("rss", RSSSource)
     register_source("gdelt", GDELTSource)
     register_source("usgs", USGSSource)
     register_source("weibo", WeiboSource)
+    register_source("zhihu", ZhihuSource)
+    register_source("xhs", XHSSource)
 
 
 _auto_register()

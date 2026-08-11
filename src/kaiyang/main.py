@@ -51,6 +51,8 @@ async def _seed_default_sources():
         {"name": "GDELT Global", "type": "gdelt", "url": "gdelt", "credibility_tier": 1},
         {"name": "USGS Earthquakes", "type": "usgs", "url": "usgs", "credibility_tier": 1},
         {"name": "Weibo 搜索", "type": "weibo", "url": "weibo", "credibility_tier": 3, "config": {"keywords": "国际,乌克兰,中东,日本,韩国"}},
+        {"name": "知乎 搜索", "type": "zhihu", "url": "zhihu", "credibility_tier": 2, "config": {"keywords": "国际局势,中东,乌克兰"}},
+        {"name": "小红书 搜索", "type": "xhs", "url": "xhs", "credibility_tier": 3, "config": {"keywords": "国际新闻,乌克兰,中东"}},
     ]
 
     async with async_session() as db:
