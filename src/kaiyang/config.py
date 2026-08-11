@@ -39,7 +39,7 @@ class Settings(BaseSettings):
     nominatim_user_agent: str = "kaiyang-osint/0.1.0"
 
     # ── RSS ──
-    rss_fetch_interval: int = 300  # 5 分钟
+    rss_fetch_interval: int = 90   # 90 秒（新闻源）
 
     @property
     def using_sqlite(self) -> bool:

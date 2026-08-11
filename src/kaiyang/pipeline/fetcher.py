@@ -71,14 +71,19 @@ class IntelFetcher:
         return dict(self._stats)
 
     async def fetch_all_sources(self) -> dict[str, int]:
-        """遍历所有活跃数据源并抓取。返回统计信息。"""
+        """遍历所有活跃数据源并抓取。"""
+        return await self._fetch_by_types(None)
+
+    async def _fetch_by_types(self, source_types: list[str] | None) -> dict[str, int]:
+        """按类型过滤抓取。None = 全部。"""
         started = time.monotonic()
         self._stats = {"fetched": 0, "stored": 0, "skipped": 0, "errors": 0}
 
         async with async_session() as db:
-            result = await db.execute(
-                select(Source).where(Source.status == "active")
-            )
+            q = select(Source).where(Source.status == "active")
+            if source_types:
+                q = q.where(Source.type.in_(source_types))
+            result = await db.execute(q)
             sources = result.scalars().all()
 
         if not sources:
@@ -179,34 +184,49 @@ class IntelFetcher:
                 await db.commit()
 
     async def start_periodic(self, interval_sec: int | None = None) -> None:
-        """启动定时抓取循环。"""
+        """启动双通道定时抓取: 快通道(API源60s) + 慢通道(RSS 90s)。"""
         if self._running:
             return
 
         interval = interval_sec or settings.rss_fetch_interval
         self._running = True
 
-        async def _loop():
+        async def _fast_loop():
+            """快通道: GDELT/USGS 等 API 源，高频抓取。"""
             while self._running:
                 try:
-                    result = await self.fetch_all_sources()
+                    # 只抓 API 源
+                    result = await self._fetch_by_types(["gdelt", "usgs", "weibo", "zhihu", "xhs"])
                     if result.get("fetched", 0) > 0:
-                        print(f"[抓取] {result}")
+                        print(f"[快速通道] {result}")
                 except Exception as e:
-                    print(f"[抓取] 循环错误: {e}")
-                await asyncio.sleep(interval)
+                    print(f"[快速通道] 错误: {e}")
+                await asyncio.sleep(60)  # 每60秒
 
-        self._task = asyncio.create_task(_loop())
+        async def _slow_loop():
+            """慢通道: RSS 源，低频抓取。"""
+            while self._running:
+                try:
+                    result = await self._fetch_by_types(["rss"])
+                    if result.get("fetched", 0) > 0:
+                        print(f"[慢通道] {result}")
+                except Exception as e:
+                    print(f"[慢通道] 错误: {e}")
+                await asyncio.sleep(interval)  # 每90秒
+
+        self._task = asyncio.create_task(_fast_loop())
+        self._task2 = asyncio.create_task(_slow_loop())
 
     async def stop(self) -> None:
         """停止定时抓取。"""
         self._running = False
-        if self._task:
-            self._task.cancel()
-            try:
-                await self._task
-            except asyncio.CancelledError:
-                pass
+        for t in [getattr(self, '_task', None), getattr(self, '_task2', None)]:
+            if t:
+                t.cancel()
+                try:
+                    await t
+                except asyncio.CancelledError:
+                    pass
 
 
 # 全局单例
