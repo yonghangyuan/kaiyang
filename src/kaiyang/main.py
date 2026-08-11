@@ -108,6 +108,16 @@ async def lifespan(app: FastAPI):
 
     asyncio.create_task(_init_fts())
 
+    # AI 文章分类（后台异步，参考 Redroom narrativeEngine）
+    async def _ai_classify():
+        await asyncio.sleep(10)
+        from .pipeline.ai_classifier import classify_recent_articles
+        n = await classify_recent_articles(limit=5)  # 首次分类 5 篇
+        if n > 0:
+            print(f"[开阳] AI 分类完成: {n} 篇")
+
+    asyncio.create_task(_ai_classify())
+
     # 补标注已有数据（异步，不阻塞启动）
     async def _post_startup():
         await asyncio.sleep(2)  # 等服务完全就绪

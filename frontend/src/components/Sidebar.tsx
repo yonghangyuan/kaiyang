@@ -47,7 +47,10 @@ export default function Sidebar({ briefing, chatMessages, onSearch, onChat, stat
                 <div style={{ color: 'var(--fg-dim)', fontSize: 10 }}>{(t.time||'').substring(0,16)}</div>
                 <div>{(t.title||'').substring(0,80)}</div>
                 {t.severity ? <div className="importance-bar" style={{width:Math.min(t.severity*10,100)+'%',background:`hsl(${(10-t.severity)*12},80%,50%)`}} /> : null}
-                <div style={{ color: 'var(--fg-dim)', fontSize: 10 }}>{t.type==='web'?'web ':''}{t.country||''}{t.severity?' | imp:'+t.severity+'/10':''}</div>
+                <div style={{ color: 'var(--fg-dim)', fontSize: 10 }}>
+                  {t.type==='web'?'web ':''}{t.country||''}{t.severity?' | imp:'+t.severity+'/10':''}
+                  {t.ai_topic ? ' | '+t.ai_topic : ''}
+                </div>
               </div>
             ))}
           </div>
