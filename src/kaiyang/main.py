@@ -49,6 +49,7 @@ async def _seed_default_sources():
         {"name": "人民日报", "type": "rss", "url": "http://www.people.com.cn/rss/politics.xml", "credibility_tier": 2},
         # Tier 1 — 全球事件
         {"name": "GDELT Global", "type": "gdelt", "url": "gdelt", "credibility_tier": 1},
+        {"name": "USGS Earthquakes", "type": "usgs", "url": "usgs", "credibility_tier": 1},
     ]
 
     async with async_session() as db:
@@ -284,14 +285,9 @@ h1{color:#e2c860;margin-bottom:4px;font-size:24px}
 
 
 @app.get("/map")
-async def map_page(request: Request):
-    """态势感知地图页面。"""
-    from .api.map import get_map_html
-    import urllib.parse
-    points_param = request.query_params.get("points", "")
-    points_json = urllib.parse.unquote(points_param) if points_param else ""
-    html = get_map_html(points_json)
-    return HTMLResponse(html)
+async def map_page():
+    """地图页面 — 重定向到 React SPA。"""
+    return await spa_root()
 
 
 @app.get("/health")

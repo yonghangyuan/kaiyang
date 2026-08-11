@@ -32,8 +32,10 @@ def list_source_types() -> list[str]:
 def _auto_register():
     from .rss_source import RSSSource
     from .gdelt_source import GDELTSource
+    from .usgs_source import USGSSource
     register_source("rss", RSSSource)
     register_source("gdelt", GDELTSource)
+    register_source("usgs", USGSSource)
 
 
 _auto_register()

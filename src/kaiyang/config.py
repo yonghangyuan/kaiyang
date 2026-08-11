@@ -52,7 +52,7 @@ class Settings(BaseSettings):
 
     model_config = {
         "env_prefix": "KAIYANG_",
-        "env_file": ".env",
+        "env_file": str(Path(__file__).resolve().parents[2] / ".env"),
         "env_file_encoding": "utf-8",
         "extra": "ignore",
     }

@@ -8,6 +8,6 @@ export default defineConfig({
   },
   build: {
     outDir: '../src/kaiyang/webui',
-    emptyOutDir: true,
+    emptyOutDir: false,
   },
 })

@@ -45,7 +45,7 @@ export default function App() {
     if(chatR.status==='fulfilled'){
       try{
         const d=await chatR.value.json()
-        setChatMessages(p=>[...p,{role:'ai',content:(d.reply||'').replace(/\*\*/g,''),time:new Date().toLocaleTimeString()}])
+        setChatMessages(p=>[...p,{role:'ai',content:(d.reply||'').replace(/\*\*/g,'').replace(/^#{1,4}\s/gm,'').replace(/^---+/gm,'').replace(/```[\s\S]*?```/g,'').replace(/`([^`]+)`/g,'$1').replace(/^>\s/gm,'').trim(),time:new Date().toLocaleTimeString()}])
         setStatus(d.model||'replied')
         const ar=await fetch('/api/annotations/from-text',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text:d.reply})})
         const ad=await ar.json(); if(ad.ok){loadAnnotations();setStatus(s=>s+' | '+ad.coordinates_count+' annotations')}

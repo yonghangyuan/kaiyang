@@ -32,7 +32,7 @@ export default function Sidebar({ briefing, chatMessages, onSearch, onChat, stat
       <div style={{ flex: 1, overflow: 'auto', padding: '10px 12px', fontSize: 13 }}>
         {tab === 'search' && (briefing ? (
           <div>
-            {briefing.summary && <div style={{ background: '#131a35', padding: 10, borderRadius: 6, marginBottom: 12, borderLeft: '3px solid #2563eb', lineHeight: 1.6 }}>{briefing.summary.replace(/\*\*/g,'')}</div>}
+            {briefing.summary && <div style={{ background: '#131a35', padding: 10, borderRadius: 6, marginBottom: 12, borderLeft: '3px solid #2563eb', lineHeight: 1.6 }}>{briefing.summary.replace(/\*\*/g,'').replace(/^#{1,4}\s/gm,'').replace(/^---+/gm,'').replace(/```[\s\S]*?```/g,'').replace(/`([^`]+)`/g,'$1').trim()}</div>}
             <div style={{ color: '#e2c860', marginBottom: 4 }}>Timeline ({briefing.timeline_count}{briefing.web_count ? ' + web'+briefing.web_count : ''})</div>
             {briefing.timeline.slice(0,30).map((t:any,i:number) => (
               <div key={i} style={{ padding: '6px 10px', borderLeft: '2px solid '+tColor(t), marginLeft: 10, marginBottom: 4, fontSize: 12 }}>
