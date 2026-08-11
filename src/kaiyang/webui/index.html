@@ -5,10 +5,36 @@
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>开阳 · 态势感知</title>
-    <script type="module" crossorigin src="/assets/index-CFRIvbuP.js"></script>
+    <script type="module" crossorigin src="/assets/index-D7c2-Rbo.js"></script>
     <link rel="stylesheet" crossorigin href="/assets/index-Bhm14YFz.css">
   </head>
   <body>
     <div id="root"></div>
+    <script>
+      // Global helpers for map popups — inline to prevent tree-shaking
+      window.loadEventItems = function(eventId) {
+        var el = document.getElementById('evt-items-' + eventId);
+        if (!el) return;
+        el.innerHTML = '<small style="color:#64748b">loading...</small>';
+        fetch('/api/events/' + eventId + '/items').then(function(r) { return r.json() }).then(function(d) {
+          var h = '';
+          d.items.slice(0, 5).forEach(function(i) {
+            h += '<div style="font-size:11px">&bull; <a href="' + i.url + '" target="_blank" style="color:#60a5fa">' + (i.title||'').substring(0,60) + '</a></div>';
+          });
+          if (d.items.length > 5) h += '<div style="color:#64748b;font-size:10px">...' + d.items.length + ' articles</div>';
+          el.innerHTML = h;
+        }).catch(function() { el.innerHTML = '<small style="color:#ef4444">load failed</small>' });
+      };
+      window.tianshuPopup = function(title) {
+        var w = window.open('', '_blank', 'width=800,height=600');
+        if (!w) return;
+        var query = decodeURIComponent(title);
+        w.document.write('<body style="font-family:sans-serif;padding:20px;background:#0a0e27;color:#c9d1d9"><h2 style="color:#e2c860">Tianshu</h2><p>' + query + '</p><p style="color:#64748b">Connecting...</p>');
+        fetch('/api/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ message: '请搜索: ' + query }) })
+          .then(function(r) { return r.json() }).then(function(d) {
+            w.document.body.innerHTML = '<div style="max-width:700px;margin:0 auto"><h2 style="color:#e2c860">Tianshu</h2><pre style="white-space:pre-wrap;font-size:14px;line-height:1.6">' + (d.reply||'empty') + '</pre></div>';
+          }).catch(function() { w.document.body.innerHTML = '<p style="color:#ef4444">Connection failed</p>' });
+      };
+    </script>
   </body>
 </html>
