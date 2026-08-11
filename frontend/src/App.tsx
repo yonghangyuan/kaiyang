@@ -95,10 +95,12 @@ export default function App() {
       </div>
       <div style={{display:'flex',flex:1,overflow:'hidden'}}>
         <div style={{flex:1,position:'relative'}}>
-          {viewMode === '2d'
-            ? <MapView events={events} searchResults={searchResults} annotations={annotations}/>
-            : <GlobeView events={[...events, ...searchResults]}/>
-          }
+          <div style={{display:viewMode==='2d'?'block':'none',width:'100%',height:'100%'}}>
+            <MapView events={events} searchResults={searchResults} annotations={annotations}/>
+          </div>
+          <div style={{display:viewMode==='3d'?'block':'none',width:'100%',height:'100%'}}>
+            <GlobeView events={[...events, ...searchResults]}/>
+          </div>
           <button onClick={() => setViewMode(v => v==='2d'?'3d':'2d')}
             style={{position:'absolute',top:80,left:10,zIndex:1000,
               background:'var(--bg-card)',border:'1px solid var(--border)',color:'var(--fg)',
