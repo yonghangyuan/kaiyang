@@ -87,6 +87,27 @@ button, a, input, select, textarea {
 }
 button { font-family: inherit; }
 
+/* ── Redroom scanline ── */
+body::after {
+  content: '';
+  position: fixed; top: 0; left: 0; right: 0; height: 2px; z-index: 9999; pointer-events: none;
+  background: linear-gradient(90deg, transparent, rgba(59,130,246,0.15), transparent);
+  animation: scanline 12s linear infinite;
+}
+
+/* ── Importance bar ── */
+.importance-bar {
+  height: 3px; border-radius: 2px; transition: width 0.7s ease;
+  box-shadow: 0 0 6px var(--bar-color, var(--accent));
+}
+
+/* ── Live dot ── */
+.live-dot {
+  display: inline-block; width: 8px; height: 8px; border-radius: 50%;
+  background: var(--green); animation: live-dot 2s ease-in-out infinite;
+  margin-right: 6px; vertical-align: middle;
+}
+
 /* ── Leaflet overrides ── */
 .leaflet-container { background: var(--bg) !important; }
 .leaflet-popup-content-wrapper { background: var(--bg-card) !important; color: var(--fg) !important; border: 1px solid var(--border) !important; border-radius: var(--radius) !important; }

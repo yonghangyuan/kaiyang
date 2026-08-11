@@ -65,6 +65,12 @@ export default function App() {
 
   return (
     <div style={{display:'flex',height:'100vh',position:'relative',zIndex:1}}>
+      <div style={{position:'fixed',top:4,left:12,zIndex:50,display:'flex',alignItems:'center',gap:8,fontSize:11,fontFamily:'monospace',color:'var(--fg-dim)',pointerEvents:'none'}}>
+        <span className="live-dot" />
+        <span style={{letterSpacing:'0.1em'}}>KAIYANG SYS:ONLINE</span>
+        <span style={{color:'var(--fg-dim)',opacity:0.5}}>| TC-{status.includes('critical')?'3':status.includes('high')?'2':'1'}/5</span>
+        <span style={{color:'var(--fg-dim)',opacity:0.5}}>| {new Date().toISOString().substring(0,10)}</span>
+      </div>
       <div style={{flex:1}}><MapView events={events} searchResults={searchResults} annotations={annotations}/></div>
       <Sidebar briefing={briefing} chatMessages={chatMessages} onSearch={doSearch} onChat={doChat} onClearAnnotations={clearAnnotations} status={status} stats={stats}/>
     </div>
