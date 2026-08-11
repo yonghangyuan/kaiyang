@@ -35,7 +35,7 @@ export default function Sidebar({ briefing, chatMessages, onSearch, onChat, stat
         <span title="Intel items" style={{color:'#3b82f6'}}>{stats.intel}条</span>
         <span title="Events" style={{color:'#eab308'}}>{stats.events}事件</span>
         <span title="Entities" style={{color:'#a855f7'}}>{stats.entities}实体</span>
-        <span style={{marginLeft:'auto',color:'#64748b'}}>●Event ●EQ ●Search ●Anno</span>
+        <span style={{marginLeft:'auto',color:'#64748b'}}>●Event ●EQ ●Social ●Search ●Anno</span>
       </div>}
       <div style={{ flex: 1, overflow: 'auto', padding: '10px 12px', fontSize: 13 }}>
         {tab === 'search' && (briefing ? (

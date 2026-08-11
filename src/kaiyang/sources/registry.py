@@ -33,9 +33,11 @@ def _auto_register():
     from .rss_source import RSSSource
     from .gdelt_source import GDELTSource
     from .usgs_source import USGSSource
+    from .weibo_source import WeiboSource
     register_source("rss", RSSSource)
     register_source("gdelt", GDELTSource)
     register_source("usgs", USGSSource)
+    register_source("weibo", WeiboSource)
 
 
 _auto_register()

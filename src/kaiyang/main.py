@@ -50,6 +50,7 @@ async def _seed_default_sources():
         # Tier 1 — 全球事件
         {"name": "GDELT Global", "type": "gdelt", "url": "gdelt", "credibility_tier": 1},
         {"name": "USGS Earthquakes", "type": "usgs", "url": "usgs", "credibility_tier": 1},
+        {"name": "Weibo 搜索", "type": "weibo", "url": "weibo", "credibility_tier": 3, "config": {"keywords": "国际,乌克兰,中东,日本,韩国"}},
     ]
 
     async with async_session() as db:

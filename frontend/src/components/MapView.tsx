@@ -31,7 +31,8 @@ export default function MapView({ events, searchResults, annotations }: Props) {
     const overlays: Record<string, L.LayerGroup> = {
       'Events': L.layerGroup(),
       'Earthquakes': L.layerGroup(),
-      'Search Results': L.layerGroup(),
+      'Social': L.layerGroup(),
+	      'Search Results': L.layerGroup(),
       'Annotations': L.layerGroup(),
     }
     Object.entries(overlays).forEach(([, g]) => g.addTo(map))
