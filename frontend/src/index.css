@@ -101,6 +101,29 @@ body::after {
   box-shadow: 0 0 6px var(--bar-color, var(--accent));
 }
 
+/* ── Bottom ticker ── */
+@keyframes ticker-scroll { 0% { transform: translateX(0); } 100% { transform: translateX(-50%); } }
+.ticker-bar {
+  height: 28px; background: var(--bg-card); border-top: 1px solid var(--border);
+  overflow: hidden; position: relative; flex-shrink: 0;
+}
+.ticker-content {
+  display: inline-flex; white-space: nowrap;
+  animation: ticker-scroll 90s linear infinite;
+}
+.ticker-content:hover { animation-play-state: paused; }
+.ticker-item {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 0 12px; font-size: 11px; font-family: monospace;
+  color: var(--fg-dim); border-right: 1px solid var(--border);
+}
+.ticker-item .dot { width: 5px; height: 5px; border-radius: 50%; flex-shrink: 0; }
+.ticker-label {
+  font-size: 9px; font-weight: 700; letter-spacing: 0.1em; color: var(--green);
+  padding: 0 12px; display: flex; align-items: center; gap: 6px;
+  border-right: 1px solid var(--border); flex-shrink: 0;
+}
+
 /* ── Live dot ── */
 .live-dot {
   display: inline-block; width: 8px; height: 8px; border-radius: 50%;

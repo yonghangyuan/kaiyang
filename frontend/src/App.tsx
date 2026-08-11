@@ -63,16 +63,42 @@ export default function App() {
 
   const clearAnnotations = () => { api.annotations.clear(); loadAnnotations() }
 
+  // Build ticker items from events
+  const tickerItems = events.slice(0, 30).map(e => ({
+    title: (e.title||'').substring(0,80),
+    country: e.country_code||'',
+    severity: e.severity||1,
+    time: (e.time_start||e.published_at||'').substring(11,16),
+  }))
+
   return (
-    <div style={{display:'flex',height:'100vh',position:'relative',zIndex:1}}>
+    <div style={{display:'flex',flexDirection:'column',height:'100vh',position:'relative',zIndex:1}}>
       <div style={{position:'fixed',top:4,left:12,zIndex:50,display:'flex',alignItems:'center',gap:8,fontSize:11,fontFamily:'monospace',color:'var(--fg-dim)',pointerEvents:'none'}}>
         <span className="live-dot" />
         <span style={{letterSpacing:'0.1em'}}>KAIYANG SYS:ONLINE</span>
         <span style={{color:'var(--fg-dim)',opacity:0.5}}>| TC-{status.includes('critical')?'3':status.includes('high')?'2':'1'}/5</span>
-        <span style={{color:'var(--fg-dim)',opacity:0.5}}>| {new Date().toISOString().substring(0,10)}</span>
+        <span style={{color:'var(--fg-dim)',opacity:0.5}}>| {stats.sources}SRC | {stats.intel}ART | {stats.entities}ENT</span>
       </div>
-      <div style={{flex:1}}><MapView events={events} searchResults={searchResults} annotations={annotations}/></div>
-      <Sidebar briefing={briefing} chatMessages={chatMessages} onSearch={doSearch} onChat={doChat} onClearAnnotations={clearAnnotations} status={status} stats={stats}/>
+      <div style={{display:'flex',flex:1,overflow:'hidden'}}>
+        <div style={{flex:1}}><MapView events={events} searchResults={searchResults} annotations={annotations}/></div>
+        <Sidebar briefing={briefing} chatMessages={chatMessages} onSearch={doSearch} onChat={doChat} onClearAnnotations={clearAnnotations} status={status} stats={stats}/>
+      </div>
+      {tickerItems.length > 0 && (
+        <div className="ticker-bar">
+          <div className="ticker-content">
+            <span className="ticker-label"><span className="live-dot" style={{width:6,height:6}} />LIVE</span>
+            {[...tickerItems, ...tickerItems].map((t, i) => {
+              const c = t.severity >= 7 ? 'var(--red)' : t.severity >= 5 ? 'var(--orange)' : t.severity >= 3 ? 'var(--yellow)' : 'var(--green)'
+              return <span key={i} className="ticker-item">
+                <span className="dot" style={{background:c}} />
+                <span style={{color:'var(--fg-dim)',opacity:0.5}}>{t.time}</span>
+                <span style={{color:'var(--fg)'}}>{t.title}</span>
+                {t.country && <span style={{color:c,fontSize:10}}>[{t.country}]</span>}
+              </span>
+            })}
+          </div>
+        </div>
+      )}
     </div>
   )
 }
