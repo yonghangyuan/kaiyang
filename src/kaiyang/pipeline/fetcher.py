@@ -38,9 +38,19 @@ class IntelFetcher:
         if ws in self._ws_clients:
             self._ws_clients.remove(ws)
 
+    def register_sse(self, queue: asyncio.Queue):
+        if not hasattr(self, '_sse_queues'):
+            self._sse_queues: list[asyncio.Queue] = []
+        self._sse_queues.append(queue)
+
+    def unregister_sse(self, queue: asyncio.Queue):
+        if hasattr(self, '_sse_queues') and queue in self._sse_queues:
+            self._sse_queues.remove(queue)
+
     async def _broadcast(self, msg: dict):
-        """广播消息到所有 WebSocket 客户端。"""
+        """广播消息到所有 WebSocket + SSE 客户端。"""
         import json as _json
+        # WebSocket
         disconnected = []
         for ws in self._ws_clients:
             try:
@@ -49,6 +59,12 @@ class IntelFetcher:
                 disconnected.append(ws)
         for ws in disconnected:
             self.unregister_ws(ws)
+        # SSE queues
+        for q in getattr(self, '_sse_queues', []):
+            try:
+                q.put_nowait(msg)
+            except asyncio.QueueFull:
+                pass
 
     @property
     def stats(self) -> dict[str, int]:

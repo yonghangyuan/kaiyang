@@ -190,7 +190,40 @@ async def spa_assets(path: str):
     return HTMLResponse("", status_code=404)
 
 
-# ── WebSocket 实时推送 ────────────────────────────────────────
+# ── SSE 实时推送 (参考 Redroom SSE data pump) ─────────────────
+
+from fastapi.responses import StreamingResponse as _StreamingResponse
+import json as _json_lib
+
+@app.get("/api/sse")
+async def sse_endpoint():
+    """SSE 实时数据推送——参考 Redroom SSE data pump 模式。
+    替代 WebSocket: 更简单、更可靠、自动重连。
+    """
+    async def event_stream():
+        from .pipeline.fetcher import fetcher
+        queue: asyncio.Queue = asyncio.Queue()
+        fetcher.register_sse(queue)
+        try:
+            while True:
+                try:
+                    data = await asyncio.wait_for(queue.get(), timeout=15.0)
+                    yield f"data: {_json_lib.dumps(data, ensure_ascii=False)}\n\n"
+                except asyncio.TimeoutError:
+                    yield ": heartbeat\n\n"  # 15s 心跳
+        except asyncio.CancelledError:
+            pass
+        finally:
+            fetcher.unregister_sse(queue)
+
+    return _StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
+# ── WebSocket (保留兼容) ──────────────────────────────────────
 
 from fastapi import WebSocket, WebSocketDisconnect
 
@@ -201,7 +234,7 @@ async def websocket_endpoint(ws: WebSocket):
     fetcher.register_ws(ws)
     try:
         while True:
-            await ws.receive_text()  # 保持连接
+            await ws.receive_text()
     except WebSocketDisconnect:
         pass
     except Exception:

@@ -1,13 +1,13 @@
 """开阳 (Kaiyang) — 缓存抽象层。
 
 参考:
-  - MediaCrawler cache/abs_cache.py: AbstractCache + 工厂模式 + 内存/Redis 双后端
-  - WorldMonitor server/_shared/redis.ts: coalescing cache + negative caching
+  - MediaCrawler cache/: AbstractCache + 工厂模式
+  - WorldMonitor redis.ts: coalescing cache + negative caching
+  - Redroom cache.ts: 单飞(single-flight)缓存——防止惊群效应
 
 用法:
-    from kaiyang.pipeline.cache import get_cache
     cache = await get_cache()
-    value = await cache.get("key")  # 自动 fallback: Redis → Memory
+    value = await cache.get_or_fetch("key", fetcher, ttl=60)  # 自动缓存+单飞
 """
 
 from __future__ import annotations
@@ -15,32 +15,28 @@ from __future__ import annotations
 import time
 import asyncio
 from abc import ABC, abstractmethod
-from typing import Any
+from typing import Any, Callable, Awaitable
 
 
 class AbstractCache(ABC):
-    """缓存抽象基类。参考 MediaCrawler abs_cache.py。"""
-
     @abstractmethod
     async def get(self, key: str) -> Any | None: ...
-
     @abstractmethod
     async def set(self, key: str, value: Any, ttl: int = 300) -> None: ...
-
     @abstractmethod
     async def delete(self, key: str) -> None: ...
 
 
 class MemoryCache(AbstractCache):
-    """内存缓存——开发环境无需 Redis。参考 MediaCrawler local_cache.py。"""
+    """内存缓存。参考 Redroom cache.ts: 单飞 + 过期回退。"""
 
     def __init__(self):
-        self._store: dict[str, tuple[Any, float]] = {}  # value, expire_at
+        self._store: dict[str, tuple[Any, float]] = {}
+        self._pending: dict[str, asyncio.Task] = {}  # 单飞: 防重复请求
 
     async def get(self, key: str) -> Any | None:
         entry = self._store.get(key)
-        if entry is None:
-            return None
+        if entry is None: return None
         value, expire_at = entry
         if time.monotonic() > expire_at:
             del self._store[key]
@@ -52,6 +48,37 @@ class MemoryCache(AbstractCache):
 
     async def delete(self, key: str) -> None:
         self._store.pop(key, None)
+
+    async def get_or_fetch(self, key: str, fetcher: Callable[[], Awaitable[Any]], ttl: int = 60) -> Any:
+        """单飞缓存: 同一 key 只执行一次 fetcher，其他请求等待结果。"""
+        cached = await self.get(key)
+        if cached is not None:
+            return cached
+
+        # 已有进行中的请求 → 等待
+        if key in self._pending:
+            return await self._pending[key]
+
+        # 发起新请求
+        task = asyncio.create_task(self._do_fetch(key, fetcher, ttl))
+        self._pending[key] = task
+        try:
+            return await task
+        finally:
+            self._pending.pop(key, None)
+
+    async def _do_fetch(self, key: str, fetcher, ttl: int):
+        try:
+            result = await fetcher()
+            await self.set(key, result, ttl)
+            return result
+        except Exception:
+            # 过期缓存作为回退
+            entry = self._store.get(key)
+            if entry:
+                value, _ = entry
+                return value
+            raise
 
 
 class RedisCache(AbstractCache):
@@ -88,11 +115,9 @@ _cache: AbstractCache | None = None
 
 
 async def get_cache() -> AbstractCache:
-    """获取缓存实例——Redis 可用则用 Redis，否则回退到内存。"""
     global _cache
     if _cache is not None:
         return _cache
-
     from ..redis_client import get_redis
     try:
         r = await get_redis()
@@ -100,5 +125,5 @@ async def get_cache() -> AbstractCache:
         _cache = RedisCache(r)
     except Exception:
         _cache = MemoryCache()
-
     return _cache
+
