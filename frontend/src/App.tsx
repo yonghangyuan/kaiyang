@@ -32,7 +32,7 @@ export default function App() {
         const d = JSON.parse(evt.data)
         if (d.type === 'fetch_complete' && d.new_items > 0) {
           setStatus(`new: ${d.new_items} items` + (d.new_events ? ` +${d.new_events} events` : ''))
-          setTimeout(() => { loadEvents(); loadStats() }, 2000)
+          loadEvents(); loadStats()
         }
       } catch {}
     }
@@ -40,6 +40,8 @@ export default function App() {
     return () => es.close()
   }, [])
 
+  // Periodic fallback refresh (every 90s)
+  useEffect(() => { const t = setInterval(() => { loadEvents(); loadStats() }, 90000); return () => clearInterval(t) }, [])
   useEffect(() => { loadEvents(); loadAnnotations(); loadStats() }, [])
 
   const doSearch = async (query:string) => {
@@ -63,13 +65,23 @@ export default function App() {
 
   const clearAnnotations = () => { api.annotations.clear(); loadAnnotations() }
 
-  // Build ticker items from events
-  const tickerItems = events.slice(0, 30).map(e => ({
-    title: (e.title||'').substring(0,80),
-    country: e.country_code||'',
-    severity: e.severity||1,
-    time: (e.time_start||e.published_at||'').substring(11,16),
-  }))
+  // Build ticker items from events + search results (more real-time)
+  const tickerItems = [
+    ...events.slice(0, 20).map(e => ({
+      title: (e.title||'').substring(0,80),
+      country: e.country_code||'',
+      severity: e.severity||1,
+      time: (e.time_start||e.published_at||'').substring(11,16),
+      type: 'event' as const,
+    })),
+    ...searchResults.slice(0, 10).map(e => ({
+      title: (e.title||'').substring(0,80),
+      country: e.country_code||'',
+      severity: 1,
+      time: (e.published_at||e.time_start||'').substring(11,16),
+      type: 'search' as const,
+    })),
+  ].sort((a,b) => b.time.localeCompare(a.time)).slice(0, 30)
 
   return (
     <div style={{display:'flex',flexDirection:'column',height:'100vh',position:'relative',zIndex:1}}>
