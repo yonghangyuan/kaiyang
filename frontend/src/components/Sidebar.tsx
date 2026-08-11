@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import EntityGraph from './EntityGraph'
 
 interface Briefing { query: string; summary: string; point_count: number; timeline_count: number; web_count?: number; points: any[]; timeline: any[] }
 
@@ -12,7 +13,8 @@ interface Props {
 export default function Sidebar({ briefing, chatMessages, onSearch, onChat, status, onClearAnnotations, stats }: Props) {
   const [tab, setTab] = useState<'live'|'feed'|'chat'>('live')
   const [input, setInput] = useState('')
-  const send = () => { const msg = input.trim(); if (!msg) return; setInput(''); tab === 'live' ? onSearch(msg) : onChat(msg) }
+  const [graphEntity, setGraphEntity] = useState<string | null>(null)
+  const send = () => { const msg = input.trim(); if (!msg) return; setInput(''); tab === 'chat' ? onChat(msg) : onSearch(msg) }
 
   const tColor = (t: any) => t.type==='web'?'#a855f7':t.type==='event'?'#eab308':'#3b82f6'
 
@@ -48,6 +50,14 @@ export default function Sidebar({ briefing, chatMessages, onSearch, onChat, stat
                 <div style={{ color: 'var(--fg-dim)', fontSize: 10 }}>{t.type==='web'?'web ':''}{t.country||''}{t.severity?' | imp:'+t.severity+'/10':''}</div>
               </div>
             ))}
+          </div>
+        ) : tab==='feed' ? (
+          <div style={{fontSize:12}}>
+            {graphEntity && <EntityGraph entityId={graphEntity} onClose={()=>setGraphEntity(null)} />}
+            <div style={{color:'var(--fg-dim)',padding:8,textAlign:'center'}}>
+              Click an entity to view its relationship graph
+              <br/><small>Entity graph API available at /api/entities/{'{id}'}/graph</small>
+            </div>
           </div>
         ) : <div style={{ textAlign: 'center', padding: 40, color: 'var(--fg-dim)', fontSize: 13 }}>Enter search keywords</div>)}
         {tab === 'chat' && (
