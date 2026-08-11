@@ -1,8 +1,50 @@
 * { margin: 0; padding: 0; box-sizing: border-box; }
 html, body, #root { height: 100%; }
-body { background: #0a0e27; }
 
-/* Redroom-inspired pulse animations */
+/* ── Redroom-inspired design system ── */
+:root {
+  --bg:       #0f131a;
+  --bg-card:  #161b24;
+  --bg-hover: #1c2330;
+  --fg:       #d1d5db;
+  --fg-dim:   #6b7280;
+  --border:   #262d38;
+  --accent:   #3b82f6;
+  --accent-dim: rgba(59,130,246,0.15);
+  --red:      #ef4444;
+  --green:    #22c55e;
+  --yellow:   #eab308;
+  --purple:   #a855f7;
+  --orange:   #f97316;
+  --radius:   6px;
+}
+
+body {
+  background: var(--bg);
+  color: var(--fg);
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  font-size: 14px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ── Grid overlay ── */
+body::before {
+  content: '';
+  position: fixed; inset: 0; pointer-events: none; z-index: 0;
+  background-image:
+    linear-gradient(rgba(59,130,246,0.025) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(59,130,246,0.025) 1px, transparent 1px);
+  background-size: 48px 48px;
+}
+
+/* ── Custom scrollbar ── */
+::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgba(59,130,246,0.28); border-radius: 10px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(59,130,246,0.5); }
+
+/* ── Animations ── */
 @keyframes pulse-ring {
   0% { transform: scale(0.5); opacity: 1; }
   100% { transform: scale(2.5); opacity: 0; }
@@ -10,10 +52,6 @@ body { background: #0a0e27; }
 @keyframes glow-pulse {
   0%, 100% { box-shadow: 0 0 4px rgba(239,68,68,0.4); }
   50% { box-shadow: 0 0 16px rgba(239,68,68,0.8); }
-}
-@keyframes scanline {
-  0% { transform: translateY(-100%); }
-  100% { transform: translateY(100vh); }
 }
 @keyframes fadeInUp {
   from { opacity: 0; transform: translateY(10px); }
@@ -23,8 +61,35 @@ body { background: #0a0e27; }
   0%, 100% { filter: drop-shadow(0 0 2px #ef4444); }
   50% { filter: drop-shadow(0 0 8px #ef4444); }
 }
+@keyframes live-dot {
+  0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(34,197,94,0.5); }
+  50% { opacity: 0.85; box-shadow: 0 0 0 5px rgba(34,197,94,0); }
+}
+@keyframes slideInRight {
+  from { transform: translateX(100%); opacity: 0; }
+  to { transform: translateX(0); opacity: 1; }
+}
 
+/* ── Utility classes ── */
 .severity-critical { animation: threat-pulse 1.5s ease-in-out infinite; }
 .severity-high { animation: threat-pulse 3s ease-in-out infinite; }
 .chat-msg { animation: fadeInUp 0.3s ease-out; }
-.status-bar { animation: glow-pulse 2s ease-in-out infinite; }
+.live-dot {
+  display: inline-block; width: 8px; height: 8px; border-radius: 50%;
+  background: var(--green); animation: live-dot 2s ease-in-out infinite;
+}
+
+/* ── Transition defaults ── */
+button, a, input, select, textarea {
+  transition-property: color, background-color, border-color, box-shadow;
+  transition-duration: 0.15s;
+  transition-timing-function: ease;
+}
+button { font-family: inherit; }
+
+/* ── Leaflet overrides ── */
+.leaflet-container { background: var(--bg) !important; }
+.leaflet-popup-content-wrapper { background: var(--bg-card) !important; color: var(--fg) !important; border: 1px solid var(--border) !important; border-radius: var(--radius) !important; }
+.leaflet-popup-tip { background: var(--bg-card) !important; }
+.leaflet-popup-content a { color: var(--accent) !important; }
+.leaflet-control-layers { background: var(--bg-card) !important; border: 1px solid var(--border) !important; border-radius: var(--radius) !important; color: var(--fg) !important; }

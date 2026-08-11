@@ -64,7 +64,7 @@ export default function App() {
   const clearAnnotations = () => { api.annotations.clear(); loadAnnotations() }
 
   return (
-    <div style={{display:'flex',height:'100vh',background:'#0a0e27',color:'#c9d1d9',fontFamily:'-apple-system,sans-serif'}}>
+    <div style={{display:'flex',height:'100vh',position:'relative',zIndex:1}}>
       <div style={{flex:1}}><MapView events={events} searchResults={searchResults} annotations={annotations}/></div>
       <Sidebar briefing={briefing} chatMessages={chatMessages} onSearch={doSearch} onChat={doChat} onClearAnnotations={clearAnnotations} status={status} stats={stats}/>
     </div>
