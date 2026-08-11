@@ -89,7 +89,7 @@ class IntelFetcher:
                 self._stats["stored"] += stored
                 self._stats["skipped"] += len(items) - stored
 
-                await record_fetch_success(source_record.id)
+                await record_fetch_success(source_record.id, len(items))
 
             except Exception as e:
                 self._stats["errors"] += 1

@@ -11,7 +11,7 @@ from pydantic import BaseModel
 
 from ..db import async_session
 from ..models import IntelItem, Event, Issue
-from ..pipeline.event_aggregator import aggregate_events
+from .services import pipeline_service
 
 router = APIRouter(prefix="/api", tags=["events"])
 
@@ -129,7 +129,7 @@ async def list_events(
 @router.post("/events/aggregate")
 async def trigger_aggregation(limit: int = 200):
     """手动触发事件聚合。"""
-    result = await aggregate_events(limit)
+    result = await pipeline_service.trigger_aggregate(limit)
     return {"ok": True, "result": result}
 
 
