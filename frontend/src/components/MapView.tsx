@@ -88,7 +88,7 @@ export default function MapView({ events, searchResults, annotations }: Props) {
         L.polyline(coords as [number,number][], { color: (a.style as any)?.color || '#ef4444', weight: 3, opacity: 0.8 })
           .bindPopup(`<b>${esc(a.name)}</b><br><small>${esc(a.description||'')}</small>`).addTo(g['Annotations'])
       } else if (a.type === 'point' && Array.isArray(coords) && coords.length >= 2) {
-        L.marker([coords[0] as number, coords[1] as number])
+        L.circleMarker([coords[0] as number, coords[1] as number], { radius: 8, fillColor: '#a855f7', color: '#fff', weight: 2, fillOpacity: 0.9 })
           .bindPopup(`<b>${esc(a.name)}</b><br><small>${esc(a.description||'')}</small>`).addTo(g['Annotations'])
       }
     })
