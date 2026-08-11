@@ -48,6 +48,20 @@ export default function MapView({ events, searchResults, annotations }: Props) {
     if (!g) return
     const esc = (s: string) => String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;')
 
+    // Popup helper — uses global functions to avoid inline JS complexity
+    const makePopup = (e: GeoPoint, extra: string) => {
+      const sev = e.severity || 1
+      const time = e.time_start || e.published_at || ''
+      let html = `<div style="max-width:300px"><b>${esc(e.title||'')}</b>`
+      html += `<br><small style="color:#64748b">${e.country_code||'?'} | ${time.substring(0,16)} | imp:${sev}/10`
+      if (e.source_count) html += ` | ${e.source_count}sources`
+      html += `</small>${extra}`
+      html += `<br><a href="#" onclick="event.preventDefault();(window as any).loadEventItems('${e.id}')" style="font-size:11px">view articles</a>`
+      html += ` | <a href="#" onclick="event.preventDefault();(window as any).tianshuPopup('${encodeURIComponent((e.title||'').substring(0,80))}')" style="font-size:11px">Tianshu</a>`
+      html += `<div id="evt-items-${e.id}" style="margin-top:4px"></div></div>`
+      return html
+    }
+
     // Events layer
     g['Events'].clearLayers()
     otherEvents.forEach(e => {
@@ -56,7 +70,7 @@ export default function MapView({ events, searchResults, annotations }: Props) {
       const c = sev >= 7 ? '#ef4444' : sev >= 5 ? '#f97316' : sev >= 3 ? '#eab308' : '#22c55e'
       const r = Math.min(6 + sev * 1.5, 20)
       const m = L.circleMarker([e.lat, e.lng], { radius: r, fillColor: c, color: '#fff', weight: 1, fillOpacity: 0.85 })
-        .bindPopup(`<b>${esc(e.title||'')}</b><br><small>${e.country_code||''} | importance:${sev}/10 | ${e.source_count||0}sources</small>`)
+        .bindPopup(makePopup(e, ''))
         .addTo(g['Events'])
       if (sev >= 7) (m as any)._path?.classList?.add('severity-critical')
       else if (sev >= 5) (m as any)._path?.classList?.add('severity-high')
@@ -70,7 +84,7 @@ export default function MapView({ events, searchResults, annotations }: Props) {
       const r = Math.max(6, mag * 3)
       const c = mag >= 7 ? '#7f1d1d' : mag >= 6 ? '#dc2626' : mag >= 5 ? '#f97316' : '#eab308'
       L.circleMarker([e.lat, e.lng], { radius: r, fillColor: c, color: '#fff', weight: 2, fillOpacity: 0.7 })
-        .bindPopup(`<b>${esc(e.title||'')}</b><br><small>${e.country_code||''} | M${mag.toFixed(1)}</small>`)
+        .bindPopup(makePopup(e, `<br><small style="color:${c}">M${mag.toFixed(1)}</small>`))
         .addTo(g['Earthquakes'])
     })
 
@@ -78,8 +92,11 @@ export default function MapView({ events, searchResults, annotations }: Props) {
     g['Search Results'].clearLayers()
     searchResults.forEach(e => {
       if (!e.lat || !e.lng) return
+      let extra = ''
+      if (e.url) extra += `<br><a href="${esc(e.url)}" target="_blank" style="font-size:11px;color:#60a5fa">source ↗</a>`
+      if (e.published_at) extra += ` | ${e.published_at.substring(0,16)}`
       L.circleMarker([e.lat, e.lng], { radius: 7, fillColor: '#3b82f6', color: '#fff', weight: 1, fillOpacity: 0.7 })
-        .bindPopup(`<b>${esc(e.title||'')}</b><br><small>${e.country_code||''}</small>`)
+        .bindPopup(`<div style="max-width:280px"><b>${esc(e.title||'')}</b><br><small style="color:#64748b">${e.country_code||''}${extra}</small></div>`)
         .addTo(g['Search Results'])
     })
 
