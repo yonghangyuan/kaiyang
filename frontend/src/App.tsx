@@ -92,17 +92,21 @@ export default function App() {
         <span style={{letterSpacing:'0.1em'}}>KAIYANG SYS:ONLINE</span>
         <span style={{color:'var(--fg-dim)',opacity:0.5}}>| TC-{status.includes('critical')?'3':status.includes('high')?'2':'1'}/5</span>
         <span style={{color:'var(--fg-dim)',opacity:0.5}}>| {stats.sources}SRC | {stats.intel}ART | {stats.entities}ENT</span>
-        <button onClick={() => setViewMode(v => v==='2d'?'3d':'2d')}
-          style={{pointerEvents:'auto',background:'var(--bg-card)',border:'1px solid var(--border)',color:'var(--fg-dim)',padding:'2px 8px',borderRadius:4,fontSize:10,cursor:'pointer',fontFamily:'monospace'}}>
-          {viewMode==='2d'?'🌍 3D':'🗺️ 2D'}
-        </button>
       </div>
       <div style={{display:'flex',flex:1,overflow:'hidden'}}>
-        <div style={{flex:1}}>
+        <div style={{flex:1,position:'relative'}}>
           {viewMode === '2d'
             ? <MapView events={events} searchResults={searchResults} annotations={annotations}/>
             : <GlobeView events={[...events, ...searchResults]}/>
           }
+          <button onClick={() => setViewMode(v => v==='2d'?'3d':'2d')}
+            style={{position:'absolute',bottom:12,right:12,zIndex:1000,
+              background:'var(--bg-card)',border:'1px solid var(--border)',color:'var(--fg)',
+              padding:'6px 14px',borderRadius:6,fontSize:13,cursor:'pointer',
+              boxShadow:'0 2px 8px rgba(0,0,0,0.5)'}}
+            title={viewMode==='2d'?'Switch to 3D Globe':'Switch to 2D Map'}>
+            {viewMode==='2d'?'🌍 3D Globe':'🗺️ 2D Map'}
+          </button>
         </div>
         <Sidebar briefing={briefing} chatMessages={chatMessages} onSearch={doSearch} onChat={doChat} onClearAnnotations={clearAnnotations} status={status} stats={stats}/>
       </div>

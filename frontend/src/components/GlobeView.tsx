@@ -1,46 +1,53 @@
 import { useEffect, useRef } from 'react'
 
-interface GeoPoint { id: string; title: string; lat: number; lng: number; severity?: number; country_code?: string }
+interface GeoPoint { id: string; title: string; lat: number; lng: number; severity?: number }
 interface Props { events: GeoPoint[] }
-
-const globeState = { instance: null as any, ready: false }
 
 export default function GlobeView({ events }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
+  const globeRef = useRef<any>(null)
 
   useEffect(() => {
-    if (globeState.ready || !containerRef.current) return
-    // Load globe.gl from CDN (simpler than npm chunk loading)
-    const script = document.createElement('script')
-    script.src = 'https://unpkg.com/globe.gl@2'
-    script.onload = () => {
-      const G = (window as any).Globe
-      if (!G || !containerRef.current) return
-      const globe = G()(containerRef.current)
+    if (globeRef.current || !containerRef.current) return
+
+    import('globe.gl').then(mod => {
+      const Globe = (mod as any).default || mod
+      const el = containerRef.current
+      if (!el) return
+
+      // WorldMonitor-style: new Globe(element)
+      const g = Globe()(el)
         .globeImageUrl('//unpkg.com/three-globe/example/img/earth-blue-marble.jpg')
+        .bumpImageUrl('//unpkg.com/three-globe/example/img/earth-topology.png')
         .backgroundColor('#0f131a')
         .atmosphereColor('#3b82f6')
         .atmosphereAltitude(0.15)
-        .pointLat('lat').pointLng('lng').pointColor('color').pointRadius('size').pointLabel('label')
+        .pointLat('lat')
+        .pointLng('lng')
+        .pointColor('color')
+        .pointRadius('size')
+        .pointLabel('label')
         .pointsData([])
-      globeState.instance = globe
-      globeState.ready = true
-      // Render current events
+
+      // Auto-rotate
+      g.controls().autoRotate = true
+      g.controls().autoRotateSpeed = 0.5
+
+      globeRef.current = g
       updatePoints(events)
-    }
-    document.head.appendChild(script)
+    })
   }, [])
 
   const updatePoints = (pts: GeoPoint[]) => {
-    const g = globeState.instance
+    const g = globeRef.current
     if (!g) return
     const points = pts
       .filter(e => e.lat && e.lng)
       .map(e => ({
         lat: e.lat, lng: e.lng,
-        size: Math.min((e.severity || 1) * 0.15, 0.8),
-        color: (e.severity||1) >= 7 ? '#ef4444' : (e.severity||1) >= 5 ? '#f97316' : (e.severity||1) >= 3 ? '#eab308' : '#22c55e',
-        label: `${e.country_code||''} ${(e.title||'').substring(0,60)}`,
+        size: Math.min((e.severity || 1) * 0.12, 0.6),
+        color: e.severity && e.severity >= 7 ? '#ef4444' : e.severity && e.severity >= 5 ? '#f97316' : '#eab308',
+        label: (e.title || '').substring(0, 60),
       }))
     g.pointsData(points)
   }
