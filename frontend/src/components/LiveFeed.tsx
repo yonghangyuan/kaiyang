@@ -96,6 +96,12 @@ export default function LiveFeed({ onSelectCountry, onSelectEntity, onFlyTo }: P
             {item.raw_data?.importance >= 7 && (
               <span style={{fontSize:9,color:'var(--red)',background:'var(--red)20',padding:'0 3px',borderRadius:2,marginLeft:4}}>!{item.raw_data.importance}</span>
             )}
+            {item.raw_data?.verification?.status === 'verified' && (
+              <span style={{fontSize:9,color:'var(--green)',marginLeft:2}}>✓</span>
+            )}
+            {item.raw_data?.verification?.status === 'unverified' && (
+              <span style={{fontSize:9,color:'var(--fg-dim)',marginLeft:2}}>?</span>
+            )}
           </div>
         )
       })}
