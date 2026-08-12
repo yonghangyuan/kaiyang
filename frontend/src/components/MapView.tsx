@@ -31,6 +31,7 @@ export default function MapView({ events, searchResults, annotations, chain, fly
     // Create data layer groups
     const overlays: Record<string, L.LayerGroup> = {
       'Chains': L.layerGroup(),
+      'Facilities': L.layerGroup(),
       'Events': L.layerGroup(),
       'Earthquakes': L.layerGroup(),
       'Social': L.layerGroup(),
@@ -132,6 +133,20 @@ export default function MapView({ events, searchResults, annotations, chain, fly
           L.polyline([[a.lat,a.lng],[b.lat,b.lng]], { color: '#eab308', weight: 2, dashArray: '6,4', opacity: 0.7 })
             .bindPopup(`${e.from_relation} → ${e.to_relation}`).addTo(g['Chains'])
         }
+      })
+    }
+
+    // Facilities layer (loaded once)
+    if (!g['Facilities'].getLayers().length) {
+      fetch('/api/facilities?limit=200').then(r => r.json()).then(d => {
+        d.facilities.forEach((f: any) => {
+          if (!f.lat || !f.lng) return
+          const c = f.threat >= 5 ? '#ff4444' : f.threat >= 4 ? '#ff9944' : f.threat >= 3 ? '#ffcc00' : '#3b82f6'
+          const icons: Record<string,string> = { military_base:'🔴', nuclear:'☢️', port:'⚓', airport:'✈️', spaceport:'🚀', chokepoint:'⚠️' }
+          L.circleMarker([f.lat, f.lng], { radius: 6, fillColor: c, color: '#fff', weight: 1, fillOpacity: 0.9 })
+            .bindPopup(`<b>${icons[f.type]||'📍'} ${f.name}</b><br><small>${f.type} | ${f.country} | threat:${f.threat}/5<br>${f.description||''}</small>`)
+            .addTo(g['Facilities'])
+        })
       })
     }
 
