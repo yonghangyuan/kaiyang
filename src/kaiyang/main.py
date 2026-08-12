@@ -336,6 +336,7 @@ from .api.facilities import router as facilities_router
 from .api.threat import router as threat_router
 from .api.verify import router as verify_router
 from .api.narrative import router as narrative_router
+from .api.commands import router as commands_router
 from .mcp.handler import router as mcp_router
 
 app.include_router(sources_router)
@@ -352,6 +353,7 @@ app.include_router(facilities_router)
 app.include_router(threat_router)
 app.include_router(verify_router)
 app.include_router(narrative_router)
+app.include_router(commands_router)
 app.include_router(mcp_router)
 
 
@@ -403,6 +405,13 @@ h1{color:#e2c860;margin-bottom:4px;font-size:24px}
 </body>
 </html>"""
     return HTMLResponse(html)
+
+
+@app.get("/commands")
+async def commands_page():
+    """命令板页面。"""
+    from .api.commands import commands_page as _cp
+    return await _cp()
 
 
 @app.get("/map")
