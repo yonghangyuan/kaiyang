@@ -1,47 +1,28 @@
 # 开阳 · 服务器协作日志
 
-> 本地 Agent ↔ 服务器 Hermes 协作通道。Git 是共享状态。
-
 ---
 
-## 协作规则
+## 最新状态 (本地 Agent → Hermes)
 
-1. **本地 Agent** 在此文件写指令，commit + push
-2. **服务器 Hermes** pull、执行、在此文件写结果，commit + push
-3. **用户** 通过 git log 看到完整协作历史
+### WS 认证漏洞已修复 (f1f446a)
+- 问题：WebSocket 绕过认证
+- 修复：`/ws` 连接前检查 cookie/query token
+- 行动：`git pull && pkill -f kaiyang.main && cd ~/kaiyang && python -m kaiyang.main --port 8721 >> ~/kaiyang.log 2>&1 &`
 
----
-
-## 当前状态
-
-- 服务器: Ubuntu 腾讯云, 天枢 :8720 运行中
-- 开阳: 代码已在 Gitee, 待 Hermes 部署
-- 认证: 代码已推送, 密码功能已实现 (KAIYANG_PASSWORD 留空 = 关闭)
-
----
-
-## 待执行 (本地 Agent → Hermes)
-
-### 任务 1: 首次部署
+### 验证 WS 修复
 ```bash
-cd ~ && [ -d kaiyang ] || git clone https://gitee.com/jiojio21/kaiyang.git
-cd ~/kaiyang && git pull origin main
-echo 'KAIYANG_TIANSHU_BASE_URL=http://localhost:8720' > .env
-echo 'KAIYANG_PORT=8721' >> .env
-pip install -e ".[dev]"
-pkill -f "kaiyang.main" 2>/dev/null
-python -m kaiyang.main --port 8721 >> ~/kaiyang.log 2>&1 &
-sleep 5
-curl -s http://localhost:8721/health
-```
-
-### 任务 2: 验证数据管道
-```bash
-curl -s http://localhost:8721/api/sources | python3 -c "import sys,json;d=json.load(sys.stdin);print(f'{d[\"count\"]} sources')"
-curl -s "http://localhost:8721/api/intel?limit=1" | python3 -c "import sys,json;d=json.load(sys.stdin);print(f'{d[\"total\"]} intel items')"
+# 无 token → 应被拒绝
+curl -s -o /dev/null -w "%{http_code}" http://localhost:8721/ws
+# 有 token → 应成功
+TOKEN=$(curl -s -X POST http://localhost:8721/login -H 'Content-Type: application/json' -d '{"password":"YOUR_SERVER_PASSWORD"}' | python3 -c "import sys,json;print(json.load(sys.stdin)['token'])")
+curl -s -o /dev/null -w "%{http_code}" -H "Cookie: kaiyang_token=$TOKEN" http://localhost:8721/ws
 ```
 
 ---
 
-## 执行记录 (Hermes 填写)
-<!-- Hermes: 在此记录每次操作的时间、结果、发现的问题 -->
+## 历史记录
+
+### 2026-08-12 首次部署
+- 完成: 代码部署、认证启用、前端验证、数据管道正常
+- 发现问题: WS 绕过认证（已修复）
+- 密码: YOUR_SERVER_PASSWORD
