@@ -17,10 +17,11 @@ class WebSearchSource(AbstractSource):
     """中文新闻搜索源——通过天枢 web_search。"""
 
     async def _fetch(self) -> list[dict[str, Any]]:
-        keywords = (self._record.config or {}).get("keywords", "").split(",")
-        keywords = [k.strip() for k in keywords if k.strip()]
-        if not keywords:
-            keywords = ["国际新闻", "中国外交", "台海", "中东局势", "朝鲜半岛"]
+        cfg = self._record.config or {}
+        keywords_str = cfg.get("keywords", "")
+        if not keywords_str:
+            keywords_str = "国际新闻,中国外交,台海,中东局势,朝鲜半岛,俄乌冲突,南海"
+        keywords = [k.strip() for k in keywords_str.split(",") if k.strip()]
 
         results: list[dict] = []
         for kw in keywords[:5]:
