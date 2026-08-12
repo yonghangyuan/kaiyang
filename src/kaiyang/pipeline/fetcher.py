@@ -220,11 +220,10 @@ class IntelFetcher:
         self._running = True
 
         async def _fast_loop():
-            """快通道: GDELT/USGS 等 API 源，高频抓取。"""
+            """快通道: API 源 + 中文搜索，高频抓取。"""
             while self._running:
                 try:
-                    # 只抓 API 源
-                    result = await self._fetch_by_types(["gdelt", "usgs", "weibo", "zhihu", "xhs"])
+                    result = await self._fetch_by_types(["gdelt", "usgs", "websearch"])
                     if result.get("fetched", 0) > 0:
                         print(f"[快速通道] {result}")
                 except Exception as e:

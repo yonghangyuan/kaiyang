@@ -140,6 +140,15 @@ async def trigger_fetch():
     return {"ok": True, "stats": stats}
 
 
+@router.post("/search-now")
+async def trigger_search():
+    """手动触发中文新闻搜索（立即执行）。"""
+    from ..pipeline.fetcher import IntelFetcher
+    f = IntelFetcher()
+    result = await f._fetch_by_types(["websearch"])
+    return {"ok": True, "result": result}
+
+
 @router.get("/fetch/status")
 async def fetch_status():
     """查看抓取器统计数据。"""
