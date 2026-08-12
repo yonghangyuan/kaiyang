@@ -21,6 +21,7 @@ from .auto_geocode import geocode_item
 from .source_health import record_fetch_success, record_fetch_error
 from .scoring import score_event_importance
 from ..sources.retry import source_retry
+from .content_scraper import scrape_article
 
 
 def _quick_score(title: str, content: str) -> int:
@@ -141,6 +142,10 @@ class IntelFetcher:
         except Exception:
             self._stats["events_created"] = 0
 
+        # 后台刮削完整文章内容（不阻塞管道）
+        if source_types is None or "rss" in source_types:
+            asyncio.create_task(self._scrape_full_content())
+
         self._stats["elapsed_ms"] = int((time.monotonic() - started) * 1000)
 
         # 广播给 WebSocket 客户端
@@ -243,6 +248,26 @@ class IntelFetcher:
 
         self._task = asyncio.create_task(_fast_loop())
         self._task2 = asyncio.create_task(_slow_loop())
+
+    async def _scrape_full_content(self, limit: int = 10):
+        """后台刮削短内容的完整文章。"""
+        from sqlalchemy import select
+        async with async_session() as db:
+            result = await db.execute(
+                select(IntelItem).where(IntelItem.content == None).limit(limit)
+                .union_all(select(IntelItem).where(IntelItem.content == "").limit(limit))
+            )
+            items = list(result.scalars().all())[:limit]
+            for item in items:
+                if item.url:
+                    try:
+                        full = await scrape_article(item.url)
+                        if full and len(full) > len(item.content or ""):
+                            item.content = full
+                    except Exception:
+                        pass
+            if items:
+                await db.commit()
 
     async def stop(self) -> None:
         """停止定时抓取。"""
