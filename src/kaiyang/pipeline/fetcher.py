@@ -253,9 +253,11 @@ class IntelFetcher:
         """后台刮削短内容的完整文章。"""
         from sqlalchemy import select
         async with async_session() as db:
+            from sqlalchemy import or_
             result = await db.execute(
-                select(IntelItem).where(IntelItem.content == None).limit(limit)
-                .union_all(select(IntelItem).where(IntelItem.content == "").limit(limit))
+                select(IntelItem).where(
+                    or_(IntelItem.content.is_(None), IntelItem.content == "")
+                ).limit(limit)
             )
             items = list(result.scalars().all())[:limit]
             for item in items:
