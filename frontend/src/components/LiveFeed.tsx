@@ -6,9 +6,9 @@ interface FeedItem {
   lat?: number; lng?: number; raw_data?: any
 }
 
-interface Props { onSelectCountry?: (c: string) => void; onSelectEntity?: (id: string) => void }
+interface Props { onSelectCountry?: (c: string) => void; onSelectEntity?: (id: string) => void; onFlyTo?: (lat: number, lng: number) => void }
 
-export default function LiveFeed({ onSelectCountry, onSelectEntity }: Props) {
+export default function LiveFeed({ onSelectCountry, onSelectEntity, onFlyTo }: Props) {
   const [items, setItems] = useState<FeedItem[]>([])
   const [loading, setLoading] = useState(true)
   const [offset, setOffset] = useState(0)
@@ -90,7 +90,11 @@ export default function LiveFeed({ onSelectCountry, onSelectEntity }: Props) {
               {item.title?.substring(0, 100)}
             </a>
             {item.lat && item.lng && (
-              <span style={{fontSize:9,color:'var(--fg-dim)',marginLeft:6}}>📍</span>
+              <span onClick={e => { e.stopPropagation(); onFlyTo?.(item.lat!, item.lng!) }}
+                style={{fontSize:9,color:'var(--accent)',marginLeft:6,cursor:'pointer'}}>📍</span>
+            )}
+            {item.raw_data?.importance >= 7 && (
+              <span style={{fontSize:9,color:'var(--red)',background:'var(--red)20',padding:'0 3px',borderRadius:2,marginLeft:4}}>!{item.raw_data.importance}</span>
             )}
           </div>
         )

@@ -10,10 +10,11 @@ interface Props {
   briefing: Briefing | null; chatMessages: {role:string;content:string;time:string}[]
   onSearch: (q: string) => void; onChat: (msg: string) => void; status: string
   onClearAnnotations?: () => void
+  onFlyTo?: (lat: number, lng: number) => void
   stats?: {sources:number; intel:number; events:number; entities:number}
 }
 
-export default function Sidebar({ briefing, chatMessages, onSearch, onChat, status, onClearAnnotations, stats }: Props) {
+export default function Sidebar({ briefing, chatMessages, onSearch, onChat, status, onClearAnnotations, onFlyTo, stats }: Props) {
   const [tab, setTab] = useState<'live'|'feed'|'chat'>('live')
   const [input, setInput] = useState('')
   const [graphEntity, setGraphEntity] = useState<string | null>(null)
@@ -43,7 +44,7 @@ export default function Sidebar({ briefing, chatMessages, onSearch, onChat, stat
       <div style={{ flex: 1, overflow: 'auto', padding: '10px 12px', fontSize: 13 }}>
         {tab === 'live' && (
           <div>
-            <LiveFeed onSelectCountry={c => { onSearch(c) }} onSelectEntity={id => setGraphEntity(id)} />
+            <LiveFeed onSelectCountry={c => { onSearch(c) }} onSelectEntity={id => setGraphEntity(id)} onFlyTo={onFlyTo} />
             {briefing && briefing.summary && (
               <div style={{background:'var(--bg-card)',padding:10,borderRadius:6,marginTop:8,borderLeft:'3px solid var(--accent)'}}>
                 <div style={{fontSize:11,color:'var(--fg-dim)',marginBottom:4}}>Search: {briefing.query}</div>

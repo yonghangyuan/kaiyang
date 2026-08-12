@@ -16,6 +16,8 @@ export default function App() {
   const [status, setStatus] = useState('ready')
   const [stats, setStats] = useState<Stats>({sources:0, intel:0, events:0, entities:0})
   const [viewMode, setViewMode] = useState<'2d'|'3d'>('2d')
+  const [flyTo, setFlyTo] = useState<{lat:number;lng:number} | null>(null)
+  const [chain, setChain] = useState<any>(null)
 
   const loadEvents = async () => {
     try { const d = await api.events(); setEvents(d.points||[]); setStatus('Events: '+d.count) } catch { setStatus('load failed') }
@@ -96,7 +98,7 @@ export default function App() {
       <div style={{display:'flex',flex:1,overflow:'hidden'}}>
         <div style={{flex:1,position:'relative'}}>
           <div style={{display:viewMode==='2d'?'block':'none',width:'100%',height:'100%'}}>
-            <MapView events={events} searchResults={searchResults} annotations={annotations}/>
+            <MapView events={events} searchResults={searchResults} annotations={annotations} chain={chain} flyTo={flyTo}/>
           </div>
           <div style={{display:viewMode==='3d'?'block':'none',width:'100%',height:'100%'}}>
             <GlobeView events={[...events, ...searchResults]}/>
@@ -108,7 +110,7 @@ export default function App() {
             {viewMode==='2d'?'🌍':'🗺️'}
           </button>
         </div>
-        <Sidebar briefing={briefing} chatMessages={chatMessages} onSearch={doSearch} onChat={doChat} onClearAnnotations={clearAnnotations} status={status} stats={stats}/>
+        <Sidebar briefing={briefing} chatMessages={chatMessages} onSearch={doSearch} onChat={doChat} onClearAnnotations={clearAnnotations} onFlyTo={(lat,lng) => setFlyTo({lat,lng})} status={status} stats={stats}/>
       </div>
       {tickerItems.length > 0 && (
         <div className="ticker-bar">

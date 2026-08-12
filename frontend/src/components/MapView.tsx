@@ -5,9 +5,10 @@ import 'leaflet/dist/leaflet.css'
 interface GeoPoint { id: string; title: string; lat: number; lng: number; country_code?: string; severity?: number; confidence?: number; source_count?: number; time_start?: string; published_at?: string; type?: string; url?: string }
 interface Annotation { id: string; name: string; description?: string; type: string; coordinates: any; style?: any }
 
-interface Props { events: GeoPoint[]; searchResults: GeoPoint[]; annotations: Annotation[] }
+interface ChainData { nodes: {id:string; lat:number; lng:number; relation:string; title:string; severity:number}[]; edges: {from:string; to:string; from_relation:string; to_relation:string}[] }
+interface Props { events: GeoPoint[]; searchResults: GeoPoint[]; annotations: Annotation[]; chain?: ChainData | null; flyTo?: {lat:number;lng:number} | null }
 
-export default function MapView({ events, searchResults, annotations }: Props) {
+export default function MapView({ events, searchResults, annotations, chain, flyTo }: Props) {
   const mapRef = useRef<L.Map | null>(null)
   const groupsRef = useRef<Record<string, L.LayerGroup>>({})
 
@@ -29,6 +30,7 @@ export default function MapView({ events, searchResults, annotations }: Props) {
 
     // Create data layer groups
     const overlays: Record<string, L.LayerGroup> = {
+      'Chains': L.layerGroup(),
       'Events': L.layerGroup(),
       'Earthquakes': L.layerGroup(),
       'Social': L.layerGroup(),
@@ -112,7 +114,30 @@ export default function MapView({ events, searchResults, annotations }: Props) {
           .bindPopup(`<b>${esc(a.name)}</b><br><small>${esc(a.description||'')}</small>`).addTo(g['Annotations'])
       }
     })
-  }, [events, searchResults, annotations, otherEvents, earthquakeEvents])
+    // Chain layer
+    g['Chains'].clearLayers()
+    if (chain) {
+      const relColors: Record<string,string> = { cause:'#3b82f6', trigger:'#f97316', core:'#ef4444', consequence:'#eab308', response:'#22c55e' }
+      const nodeMap: Record<string, any> = {}
+      chain.nodes.forEach((n, i) => {
+        nodeMap[n.id] = n
+        const c = relColors[n.relation] || '#64748b'
+        L.circleMarker([n.lat, n.lng], { radius: 10, fillColor: c, color: '#fff', weight: 2, fillOpacity: 0.9 })
+          .bindPopup(`<b>${n.relation}</b>: ${esc(n.title||'')}`).addTo(g['Chains'])
+        L.divIcon({ html: `<div style="background:${c};color:#fff;border-radius:50%;width:20px;height:20px;text-align:center;line-height:20px;font-size:11px;font-weight:700">${i+1}</div>`, className: '', iconSize: [20,20] })
+      })
+      chain.edges.forEach(e => {
+        const a = nodeMap[e.from], b = nodeMap[e.to]
+        if (a && b) {
+          L.polyline([[a.lat,a.lng],[b.lat,b.lng]], { color: '#eab308', weight: 2, dashArray: '6,4', opacity: 0.7 })
+            .bindPopup(`${e.from_relation} → ${e.to_relation}`).addTo(g['Chains'])
+        }
+      })
+    }
+
+    // FlyTo
+    if (flyTo) mapRef.current?.flyTo([flyTo.lat, flyTo.lng], 6, { duration: 1.5 })
+  }, [events, searchResults, annotations, otherEvents, earthquakeEvents, chain, flyTo])
 
   return <div id="map-container" style={{ width: '100%', height: '100%' }} />
 }

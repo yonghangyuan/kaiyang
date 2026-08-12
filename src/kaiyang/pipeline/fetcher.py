@@ -19,7 +19,23 @@ from ..sources.base import AbstractSource
 from ..sources.registry import get_source_class
 from .auto_geocode import geocode_item
 from .source_health import record_fetch_success, record_fetch_error
+from .scoring import score_event_importance
 from ..sources.retry import source_retry
+
+
+def _quick_score(title: str, content: str) -> int:
+    """快速重要性评分 (1-10)，基于关键词匹配。"""
+    text = (title + " " + content).lower()
+    score = 1
+    keywords = {
+        "war": 4, "killed": 4, "attack": 4, "missile": 4, "nuclear": 5,
+        "crisis": 3, "conflict": 2, "military": 2, "troops": 2, "invasion": 4,
+        "sanction": 2, "earthquake": 3, "tsunami": 4, "outbreak": 3,
+        "dead": 3, "casualties": 3, "hostage": 3, "terror": 4,
+    }
+    for kw, w in keywords.items():
+        if kw in text: score += w
+    return min(score, 10)
 
 
 class IntelFetcher:
@@ -152,6 +168,11 @@ class IntelFetcher:
         # 自动地理标注
         for item in items:
             await geocode_item(item)
+            # 重要性快速评分（存入 raw_data）
+            importance = _quick_score(item.title or "", item.content or "")
+            raw = item.raw_data or {}
+            raw["importance"] = importance
+            item.raw_data = raw
 
         stored = 0
         async with async_session() as db:
