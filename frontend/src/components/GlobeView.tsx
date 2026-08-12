@@ -9,47 +9,79 @@ export default function GlobeView({ events }: Props) {
   const initRef = useRef(false)
 
   useEffect(() => {
-    if (initRef.current) return
+    if (initRef.current || !containerRef.current) return
     initRef.current = true
 
     const el = containerRef.current
-    if (!el) return
 
-    // globe.gl v2: Globe()(element) — same as WorldMonitor
     import('globe.gl').then(mod => {
       const G = (mod as any).default || mod
       const g = G()(el)
+        // NASA Blue Marble textures
         .globeImageUrl('//unpkg.com/three-globe/example/img/earth-blue-marble.jpg')
-        .backgroundColor('#0f131a')
-        .atmosphereColor('#3b82f6')
-        .atmosphereAltitude(0.2)
-        .pointLat('lat').pointLng('lng').pointColor('color').pointRadius('size')
+        .bumpImageUrl('//unpkg.com/three-globe/example/img/earth-topology.png')
+        // Atmosphere — Redroom-style blue glow
+        .backgroundColor('#000011')
+        .atmosphereColor('#3b7dff')
+        .atmosphereAltitude(0.25)
+        // Points
+        .pointLat('lat').pointLng('lng')
+        .pointColor('color').pointRadius('size').pointAltitude('alt')
+        .pointResolution(12)
+        .pointsMerge(true)
         .pointsData([])
-      g.controls().autoRotate = true
-      g.controls().autoRotateSpeed = 0.4
-      globeRef.current = g
+        // Labels for high-severity events
+        .pointLabel((d: any) => d.severity >= 7 ? d.label : '')
+        .pointLabelSize(1.2)
+        .pointLabelColor(() => '#ffffff')
 
-      // 强制渲染当前数据
-      renderPoints()
+      // Auto-rotate (slow, cinematic)
+      g.controls().autoRotate = true
+      g.controls().autoRotateSpeed = 0.3
+      g.controls().enableZoom = true
+      g.controls().minDistance = 150
+      g.controls().maxDistance = 600
+
+      // Pause auto-rotate on user interaction
+      el.addEventListener('mousedown', () => g.controls().autoRotate = false)
+      el.addEventListener('mouseup', () => setTimeout(() => { g.controls().autoRotate = true }, 5000))
+
+      globeRef.current = g
+      updatePoints()
     }).catch(e => {
       console.error('Globe init error:', e)
     })
   }, [])
 
-  useEffect(() => {
-    renderPoints()
-  }, [events])
-
-  function renderPoints() {
+  const updatePoints = () => {
     const g = globeRef.current
     if (!g) return
-    const pts = events.filter(e => e.lat && e.lng).map(e => ({
-      lat: e.lat, lng: e.lng,
-      size: Math.min((e.severity || 1) * 0.12, 0.6),
-      color: e.severity && e.severity >= 7 ? '#ef4444' : e.severity && e.severity >= 5 ? '#f97316' : '#eab308',
-    }))
-    if (pts.length > 0) g.pointsData(pts)
+    const pts = events
+      .filter(e => e.lat && e.lng)
+      .map(e => ({
+        lat: e.lat, lng: e.lng,
+        size: Math.max(0.15, (e.severity || 3) * 0.08),
+        color: e.severity && e.severity >= 7 ? '#ff4444' : e.severity && e.severity >= 5 ? '#ff9944' : '#ffcc00',
+        alt: (e.severity || 1) * 0.005,
+        severity: e.severity,
+        label: (e.title || '').substring(0, 50),
+      }))
+    g.pointsData(pts)
   }
 
-  return <div ref={containerRef} style={{ width: '100%', height: '100%', background: '#0f131a' }} />
+  useEffect(() => { updatePoints() }, [events])
+
+  return (
+    <div ref={containerRef} style={{
+      width: '100%', height: '100%',
+      background: 'radial-gradient(ellipse at center, #0a1628 0%, #000011 100%)',
+    }}>
+      <style>{`
+        @keyframes twinkle {
+          0%, 100% { opacity: 0.3; }
+          50% { opacity: 0.8; }
+        }
+      `}</style>
+    </div>
+  )
 }
