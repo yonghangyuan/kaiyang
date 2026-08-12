@@ -145,11 +145,18 @@ class IntelFetcher:
 
         # 广播给 WebSocket 客户端
         if self._stats["stored"] > 0 or self._stats.get("events_created", 0) > 0:
+            # 分级通知
+            level = "info"
+            if self._stats.get("events_created", 0) > 0 or self._stats["stored"] > 20:
+                level = "warning"
             await self._broadcast({
                 "type": "fetch_complete",
+                "level": level,
                 "new_items": self._stats["stored"],
                 "new_events": self._stats.get("events_created", 0),
                 "total_intel": self._stats["fetched"],
+                "title": f"{self._stats['stored']} new items",
+                "body": f"Fetched {self._stats['fetched']} items, {self._stats['stored']} new, {self._stats.get('events_created', 0)} events",
                 "timestamp": datetime.now(timezone.utc).isoformat(),
             })
 

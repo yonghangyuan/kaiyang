@@ -35,8 +35,12 @@ export default function App() {
       try {
         const d = JSON.parse(evt.data)
         if (d.type === 'fetch_complete' && d.new_items > 0) {
-          setStatus(`新增: ${d.new_items} 条` + (d.new_events ? ` +${d.new_events} events` : ''))
+          setStatus(`新增: ${d.new_items} 条`)
           loadEvents(); loadStats()
+          // 浏览器通知
+          if (d.level === 'warning' && (Notification as any).permission === 'granted') {
+            new Notification('开阳 情报更新', { body: d.body, icon: '/favicon.svg' })
+          }
         }
       } catch {}
     }
@@ -46,6 +50,8 @@ export default function App() {
 
   // Periodic fallback refresh (every 90s)
   useEffect(() => { const t = setInterval(() => { loadEvents(); loadStats() }, 90000); return () => clearInterval(t) }, [])
+  // Request notification permission
+  useEffect(() => { if ('Notification' in window && (Notification as any).permission === 'default') { Notification.requestPermission() } }, [])
   useEffect(() => { loadEvents(); loadAnnotations(); loadStats() }, [])
 
   const doSearch = async (query:string) => {
