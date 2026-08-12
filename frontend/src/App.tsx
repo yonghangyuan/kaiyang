@@ -101,7 +101,7 @@ export default function App() {
             <MapView events={events} searchResults={searchResults} annotations={annotations} chain={chain} flyTo={flyTo}/>
           </div>
           <div style={{display:viewMode==='3d'?'block':'none',width:'100%',height:'100%'}}>
-            <GlobeView events={[...events, ...searchResults]}/>
+            <GlobeView events={[...events, ...searchResults]} onZoomToMap={() => setViewMode('2d')}/>
           </div>
           <button onClick={() => setViewMode(v => v==='2d'?'3d':'2d')}
             style={{position:'absolute',top:80,left:10,zIndex:1000,

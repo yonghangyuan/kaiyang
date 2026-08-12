@@ -12,11 +12,13 @@
   "dependencies": {
     "@types/d3": "^7.4.3",
     "@types/leaflet": "^1.9.22",
+    "@types/three": "^0.185.4",
     "d3": "^7.9.0",
     "globe.gl": "^2.46.1",
     "leaflet": "^1.9.4",
     "react": "^19.2.8",
-    "react-dom": "^19.2.8"
+    "react-dom": "^19.2.8",
+    "three": "^0.185.1"
   },
   "devDependencies": {
     "@types/node": "^24.13.3",
