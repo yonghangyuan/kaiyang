@@ -1,4 +1,7 @@
 import { useEffect, useRef } from 'react'
+import GlobeLib from 'globe.gl'
+
+const Globe = (GlobeLib as any).default || GlobeLib
 
 interface GeoPoint { id: string; title: string; lat: number; lng: number; severity?: number }
 interface Props { events: GeoPoint[]; onZoomToMap?: () => void }
@@ -11,30 +14,22 @@ export default function GlobeView({ events, onZoomToMap }: Props) {
   useEffect(() => {
     if (initRef.current || !containerRef.current) return
     initRef.current = true
-
-    import('globe.gl').then(mod => {
-      const G = (mod as any).default || mod
-      const g = G()(containerRef.current!)
+    try {
+      const g = Globe()(containerRef.current!)
         .globeImageUrl('https://unpkg.com/three-globe/example/img/earth-blue-marble.jpg')
         .bumpImageUrl('https://unpkg.com/three-globe/example/img/earth-topology.png')
-        .backgroundColor('#000011')
-        .atmosphereColor('#4488ff')
-        .atmosphereAltitude(0.25)
+        .backgroundColor('#000011').atmosphereColor('#4488ff').atmosphereAltitude(0.25)
         .pointLat('lat').pointLng('lng').pointColor('color').pointRadius('size')
         .pointsMerge(true).pointsData([])
-
       g.controls().autoRotate = false
       g.controls().minDistance = 150
-      g.controls().maxDistance = 2000
-
       globeRef.current = g
-      updatePoints()
-    })
+      renderPoints()
+    } catch (e) { console.error('Globe error:', e) }
   }, [])
 
-  const updatePoints = () => {
-    const g = globeRef.current
-    if (!g) return
+  const renderPoints = () => {
+    const g = globeRef.current; if (!g) return
     g.pointsData(events.filter(e => e.lat && e.lng).map(e => ({
       lat: e.lat, lng: e.lng,
       size: 0.2 + (e.severity || 3) * 0.06,
@@ -42,7 +37,7 @@ export default function GlobeView({ events, onZoomToMap }: Props) {
     })))
   }
 
-  useEffect(() => { updatePoints() }, [events])
+  useEffect(() => { renderPoints() }, [events])
 
   return (
     <div style={{ position: 'relative', width: '100%', height: '100%' }}>
