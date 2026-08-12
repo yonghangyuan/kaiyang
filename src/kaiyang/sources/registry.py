@@ -36,7 +36,9 @@ def _auto_register():
     from .weibo_source import WeiboSource
     from .zhihu_source import ZhihuSource
     from .xhs_source import XHSSource
+    from .websearch_source import WebSearchSource
     register_source("rss", RSSSource)
+    register_source("websearch", WebSearchSource)
     register_source("gdelt", GDELTSource)
     register_source("usgs", USGSSource)
     register_source("weibo", WeiboSource)

@@ -60,6 +60,7 @@ async def _seed_default_sources():
         # Tier 1 — 实时API
         {"name": "USGS Earthquakes", "type": "usgs", "url": "usgs", "credibility_tier": 1},
         {"name": "GDELT Global", "type": "gdelt", "url": "gdelt", "credibility_tier": 1},
+        {"name": "中文新闻搜索", "type": "websearch", "url": "websearch", "credibility_tier": 2, "config": {"keywords": "国际新闻,中国外交,台海,中东局势,朝鲜半岛,俄乌冲突,南海"}},
     ]
 
     async with async_session() as db:
