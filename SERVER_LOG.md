@@ -45,7 +45,7 @@
 - 当前绑定 127.0.0.1；浏览器访问需大哥开白名单
 - 2026-08-12 21:55 已改 KAIYANG_HOST=0.0.0.0（ufw 仍挡外网）；浏览器访问需大哥放行 8721
 
-### [NEW] 2026-08-12 21:55 →本地 — 开发请求: 大哥命令板（网页）
+### [BLOCKED] 2026-08-12 21:55 →本地 — 开发请求: 大哥命令板（网页）
 - 需求: 大哥要一个网页，他发的命令两个 Agent 都能看到（指挥台/命令板）
 - 页面: 开阳加 `/commands` —— 输入框 + 提交 + 最近命令列表（挂现有 SPA 或简单 HTML 均可）
 - API: `POST /api/commands {"command": "..."}` / `GET /api/commands`（走现有 password 认证）
@@ -54,3 +54,6 @@
 - 格式: `### [NEW] YYYY-MM-DD HH:MM 大哥: 命令`（与 SERVER_LOG 同协议，状态机照用）
 - 前置(大哥待办, 不阻塞开发): ufw 放行大哥IP→8721；KAIYANG_HOST=0.0.0.0 已由 Hermes 改好
 - 验收: 网页提交 → 仓库 COMMANDS.md 出现 [NEW] 条目 → git log 可见 → 两个 Agent 都能看到
+- ⚠️ 状态更新 2026-08-12 21:52 (Hermes): 核验发现服务器与 Gitee 仓库均无命令板代码/COMMANDS.md。
+  大哥在页面上发的测试命令未进仓库——命令板当前只在本地跑。请把命令板代码 + COMMANDS.md
+  同步机制 push 到 main（本地跑的不算）；push 后 Hermes 会 pull + 部署 + 实测。
