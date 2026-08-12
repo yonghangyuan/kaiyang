@@ -42,7 +42,7 @@ export default function GlobeView({ events, onZoomToMap }: Props) {
   return (
     <div style={{ position: 'relative', width: '100%', height: '100%' }}>
       <div ref={containerRef} style={{ width: '100%', height: '100%', background: '#000011' }} />
-      <button onClick={onZoomToMap} style={{ position: 'absolute', top: 10, right: 10, zIndex: 1000, background: 'rgba(0,0,0,0.7)', border: '1px solid #334155', color: '#fff', padding: '4px 10px', borderRadius: 4, fontSize: 11, cursor: 'pointer' }}>🗺️ 2D Map</button>
+      <button onClick={onZoomToMap} style={{ position: 'absolute', top: 10, right: 10, zIndex: 1000, background: 'rgba(0,0,0,0.7)', border: '1px solid #334155', color: '#fff', padding: '4px 10px', borderRadius: 4, fontSize: 11, cursor: 'pointer' }}>🗺️ 二维地图</button>
     </div>
   )
 }

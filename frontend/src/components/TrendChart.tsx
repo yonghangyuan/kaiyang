@@ -1,20 +1,20 @@
 import { useEffect, useState, useRef } from 'react'
 import * as d3 from 'd3'
 
-interface TrendData { date: string; count: number; spike?: boolean }
+interface 趋势Data { date: string; count: number; spike?: boolean }
 
-export default function TrendChart() {
+export default function 趋势Chart() {
   const svgRef = useRef<SVGSVGElement>(null)
-  const [data, setData] = useState<TrendData[]>([])
+  const [data, setData] = useState<趋势Data[]>([])
   const [keyword, setKeyword] = useState('Iran')
   const [days, setDays] = useState(14)
 
-  const fetchTrend = (kw: string, d: number) => {
+  const fetch趋势 = (kw: string, d: number) => {
     fetch(`/api/trends?keyword=${encodeURIComponent(kw)}&days=${d}`)
       .then(r => r.json()).then(d => setData(d.data || []))
   }
 
-  useEffect(() => { fetchTrend(keyword, days) }, [keyword, days])
+  useEffect(() => { fetch趋势(keyword, days) }, [keyword, days])
 
   useEffect(() => {
     if (!data.length || !svgRef.current) return
@@ -57,7 +57,7 @@ export default function TrendChart() {
   return (
     <div style={{background:'var(--bg-card)',border:'1px solid var(--border)',borderRadius:6,padding:10,marginTop:8}}>
       <div style={{display:'flex',gap:6,alignItems:'center',marginBottom:6}}>
-        <span style={{fontSize:11,fontWeight:600,color:'var(--fg-dim)'}}>Trend</span>
+        <span style={{fontSize:11,fontWeight:600,color:'var(--fg-dim)'}}>趋势</span>
         <input value={keyword} onChange={e => setKeyword(e.target.value)}
           style={{width:80,background:'var(--bg)',border:'1px solid var(--border)',color:'var(--fg)',padding:'2px 6px',borderRadius:3,fontSize:11}} />
         <select value={days} onChange={e => setDays(Number(e.target.value))}

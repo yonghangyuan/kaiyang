@@ -13,14 +13,14 @@ export default function App() {
   const [annotations, setAnnotations] = useState<Annotation[]>([])
   const [briefing, setBriefing] = useState<Briefing | null>(null)
   const [chatMessages, setChatMessages] = useState<{role:string;content:string;time:string}[]>([])
-  const [status, setStatus] = useState('ready')
+  const [status, setStatus] = useState('就绪')
   const [stats, setStats] = useState<Stats>({sources:0, intel:0, events:0, entities:0})
   const [viewMode, setViewMode] = useState<'2d'|'3d'>('2d')
   const [flyTo, setFlyTo] = useState<{lat:number;lng:number} | null>(null)
   const [chain, setChain] = useState<any>(null)
 
   const loadEvents = async () => {
-    try { const d = await api.events(); setEvents(d.points||[]); setStatus('Events: '+d.count) } catch { setStatus('load failed') }
+    try { const d = await api.events(); setEvents(d.points||[]); setStatus('事件: '+d.count) } catch { setStatus('加载失败') }
   }
   const loadAnnotations = async () => {
     try { const d = await api.annotations.list(); setAnnotations(d.annotations||[]) } catch {}
@@ -35,7 +35,7 @@ export default function App() {
       try {
         const d = JSON.parse(evt.data)
         if (d.type === 'fetch_complete' && d.new_items > 0) {
-          setStatus(`new: ${d.new_items} items` + (d.new_events ? ` +${d.new_events} events` : ''))
+          setStatus(`新增: ${d.new_items} 条` + (d.new_events ? ` +${d.new_events} events` : ''))
           loadEvents(); loadStats()
         }
       } catch {}
@@ -49,19 +49,19 @@ export default function App() {
   useEffect(() => { loadEvents(); loadAnnotations(); loadStats() }, [])
 
   const doSearch = async (query:string) => {
-    setStatus('searching...')
-    try { const d = await api.search(query); setSearchResults(d.points||[]); setBriefing(d); setStatus(d.point_count+' points') } catch(e:any) { setStatus('search failed') }
+    setStatus('搜索中...')
+    try { const d = await api.search(query); setSearchResults(d.points||[]); setBriefing(d); setStatus(d.point_count+' 个标注') } catch(e:any) { setStatus('搜索失败') }
   }
 
   const doChat = async (msg:string) => {
     const now = new Date().toLocaleTimeString()
     setChatMessages(p=>[...p,{role:'user',content:msg,time:now}])
-    setStatus('thinking...')
+    setStatus('思考中...')
     const [chatR,searchR] = await Promise.allSettled([api.chat(msg), api.search(msg, 20)])
     if(chatR.status==='fulfilled'){
       const d=chatR.value
       setChatMessages(p=>[...p,{role:'ai',content:(d.reply||'').replace(/\*\*/g,'').replace(/^#{1,4}\s/gm,'').replace(/^---+/gm,'').replace(/```[\s\S]*?```/g,'').replace(/`([^`]+)`/g,'$1').trim(),time:new Date().toLocaleTimeString()}])
-      setStatus(d.model||'replied')
+      setStatus(d.model||'已回复')
       try{const ad=await api.annotations.fromText(d.reply);if(ad.ok){loadAnnotations();setStatus(s=>s+' | '+ad.coordinates_count+' annotations')}}catch{}
     }
     if(searchR.status==='fulfilled'){setSearchResults(searchR.value.points||[]);setBriefing(searchR.value)}
@@ -91,7 +91,7 @@ export default function App() {
     <div style={{display:'flex',flexDirection:'column',height:'100vh',position:'relative',zIndex:1}}>
       <div style={{position:'fixed',top:4,left:12,zIndex:50,display:'flex',alignItems:'center',gap:8,fontSize:11,fontFamily:'monospace',color:'var(--fg-dim)',pointerEvents:'none'}}>
         <span className="live-dot" />
-        <span style={{letterSpacing:'0.1em'}}>KAIYANG SYS:ONLINE</span>
+        <span style={{letterSpacing:'0.1em'}}>开阳 系统:运行中</span>
         <span style={{color:'var(--fg-dim)',opacity:0.5}}>| TC-{status.includes('critical')?'3':status.includes('high')?'2':'1'}/5</span>
         <span style={{color:'var(--fg-dim)',opacity:0.5}}>| {stats.sources}SRC | {stats.intel}ART | {stats.entities}ENT</span>
       </div>

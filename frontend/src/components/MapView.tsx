@@ -58,7 +58,7 @@ export default function MapView({ events, searchResults, annotations, chain, fly
       html += `<br><small style="color:#64748b">${e.country_code||'?'} | ${time.substring(0,16)} | imp:${sev}/10`
       if (e.source_count) html += ` | ${e.source_count}sources`
       html += `</small>${extra}`
-      html += `<br><a href="#" onclick="event.preventDefault();window.loadEventItems('${e.id}')" style="font-size:11px">view articles</a>`
+      html += `<br><a href="#" onclick="event.preventDefault();window.loadEventItems('${e.id}')" style="font-size:11px">查看报道</a>`
       html += ` | <a href="#" onclick="event.preventDefault();window.tianshuPopup('${encodeURIComponent((e.title||'').substring(0,80))}')" style="font-size:11px">Tianshu</a>`
       html += `<div id="evt-items-${e.id}" style="margin-top:4px"></div></div>`
       return html

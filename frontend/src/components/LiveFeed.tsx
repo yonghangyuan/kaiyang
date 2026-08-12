@@ -101,10 +101,10 @@ export default function LiveFeed({ onSelectCountry, onSelectEntity, onFlyTo }: P
       })}
 
       <div style={{textAlign:'center',padding:12}}>
-        {loading ? <span style={{color:'var(--fg-dim)',fontSize:11}}>Loading...</span> :
+        {loading ? <span style={{color:'var(--fg-dim)',fontSize:11}}>加载中...</span> :
           <button onClick={() => load(false)}
             style={{background:'none',border:'1px solid var(--border)',color:'var(--fg-dim)',padding:'4px 16px',borderRadius:4,fontSize:11,cursor:'pointer'}}>
-            Load More
+            加载更多
           </button>
         }
       </div>
