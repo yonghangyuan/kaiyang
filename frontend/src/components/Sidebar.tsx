@@ -2,6 +2,7 @@ import { useState } from 'react'
 import EntityGraph from './EntityGraph'
 import WordCloud from './WordCloud'
 import TrendChart from './TrendChart'
+import PredictionCard from './PredictionCard'
 import LiveFeed from './LiveFeed'
 import EntityProfile from './EntityProfile'
 
@@ -83,6 +84,7 @@ export default function Sidebar({ briefing, chatMessages, onSearch, onChat, stat
               <>
                 <WordCloud />
                 <TrendChart />
+                <PredictionCard />
                 {graphEntity && <EntityGraph entityId={graphEntity} onClose={()=>setGraphEntity(null)} />}
               </>
             )}

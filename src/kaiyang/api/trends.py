@@ -6,7 +6,7 @@ from collections import defaultdict
 
 from sqlalchemy import text
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Query, Request
 
 from ..db import async_session
 
@@ -53,6 +53,56 @@ async def keyword_trend(
         "data": data,
         "total_mentions": sum(r[1] for r in rows),
     }
+
+
+@router.post("/predict")
+async def predict(request: Request):
+    """AI 预测: 基于趋势数据 + 天枢 LLM 生成预测分析。"""
+    body = await request.json()
+    keyword = body.get("keyword", body.get("query", ""))
+    country = body.get("country", "")
+
+    # 获取趋势数据
+    from datetime import datetime, timedelta, timezone
+    since = (datetime.now(timezone.utc) - timedelta(days=14)).strftime("%Y-%m-%d")
+
+    async with async_session() as db:
+        result = await db.execute(
+            text("""SELECT date(published_at) as day, COUNT(*) as cnt
+                    FROM intel_items WHERE published_at >= :since
+                    AND (title LIKE :kw OR content LIKE :kw)
+                    GROUP BY day ORDER BY day"""),
+            {"since": since, "kw": f"%{keyword or country}%"},
+        )
+        data = [{"date": str(r[0]), "count": r[1]} for r in result.fetchall()]
+
+    # 调用天枢 LLM 预测
+    from ..config import settings
+    import httpx
+    total = sum(d["count"] for d in data)
+    trend_desc = ", ".join(f"{d['date'][-5:]}: {d['count']}" for d in data[-7:])
+
+    prediction = {"forecast": "Insufficient data", "confidence": 0, "reasoning": ""}
+    try:
+        async with httpx.AsyncClient(timeout=30) as client:
+            resp = await client.post(
+                f"{settings.tianshu_base_url}/run",
+                json={"input": f"Based on this news mention trend, predict what will happen next. Return ONLY JSON: {{\"forecast\":\"one sentence prediction\",\"confidence\":0.0-1.0,\"reasoning\":\"brief reason\"}}. Topic: {keyword or country}. Trend data ({total} mentions in 14 days): {trend_desc}. JSON:", "session_id": "kaiyang-predict"},
+            )
+            if resp.status_code == 200:
+                content = resp.json().get("content", "")
+                import json as _json
+                for line in content.split("\n"):
+                    if line.strip().startswith("{"):
+                        try:
+                            prediction = _json.loads(line.strip())
+                            break
+                        except _json.JSONDecodeError:
+                            continue
+    except Exception:
+        pass
+
+    return {"keyword": keyword or country, "total_mentions": total, "trend": data[-7:], "prediction": prediction}
 
 
 @router.get("/top")
