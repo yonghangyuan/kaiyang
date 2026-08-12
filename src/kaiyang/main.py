@@ -276,6 +276,7 @@ from .api.annotations import router as annotations_router
 from .api.export import router as export_router
 from .api.trends import router as trends_router
 from .api.facilities import router as facilities_router
+from .api.threat import router as threat_router
 from .mcp.handler import router as mcp_router
 
 app.include_router(sources_router)
@@ -289,6 +290,7 @@ app.include_router(annotations_router)
 app.include_router(export_router)
 app.include_router(trends_router)
 app.include_router(facilities_router)
+app.include_router(threat_router)
 app.include_router(mcp_router)
 
 

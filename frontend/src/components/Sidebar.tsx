@@ -3,6 +3,7 @@ import EntityGraph from './EntityGraph'
 import WordCloud from './WordCloud'
 import TrendChart from './TrendChart'
 import PredictionCard from './PredictionCard'
+import ThreatDashboard from './ThreatDashboard'
 import LiveFeed from './LiveFeed'
 import EntityProfile from './EntityProfile'
 
@@ -61,7 +62,7 @@ export default function Sidebar({ briefing, chatMessages, onSearch, onChat, stat
           profileEntity
             ? <EntityProfile entityId={profileEntity} onClose={() => setProfileEntity(null)} />
             : <>
-                <WordCloud /><TrendChart /><PredictionCard />
+                <ThreatDashboard /><WordCloud /><TrendChart /><PredictionCard />
                 {graphEntity && <EntityGraph entityId={graphEntity} onClose={() => setGraphEntity(null)} />}
               </>
         )}
