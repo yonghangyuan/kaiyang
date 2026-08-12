@@ -419,9 +419,11 @@ Example: If query is "乌克兰局势", search for "Ukraine war latest news" or 
 Return only the JSON array, nothing else."""
     try:
         async with httpx.AsyncClient(timeout=60) as client:
+            headers = {"Authorization": f"Bearer {settings.tianshu_token}"} if settings.tianshu_token else {}
             resp = await client.post(
                 f"{settings.tianshu_base_url}/run",
                 json={"input": prompt, "session_id": "kaiyang-websearch"},
+                headers=headers,
             )
             if resp.status_code == 200:
                 data = resp.json()
@@ -482,10 +484,12 @@ Headlines:
 Summary:"""
 
     try:
+        headers = {"Authorization": f"Bearer {settings.tianshu_token}"} if settings.tianshu_token else {}
         async with httpx.AsyncClient(timeout=20) as client:
             resp = await client.post(
                 f"{settings.tianshu_base_url}/run",
                 json={"input": prompt, "session_id": "kaiyang-briefing"},
+                headers=headers,
             )
             if resp.status_code == 200:
                 data = resp.json()
@@ -517,10 +521,12 @@ Query: "日本经济" → {{"keyword": "economy", "country_code": "JP", "time_ra
 Query: "有什么新闻" → {{"keyword": "", "country_code": null, "time_range": "today"}}"""
 
     try:
+        headers = {"Authorization": f"Bearer {settings.tianshu_token}"} if settings.tianshu_token else {}
         async with httpx.AsyncClient(timeout=30) as client:
             resp = await client.post(
                 f"{settings.tianshu_base_url}/run",
                 json={"input": prompt, "session_id": "kaiyang-search"},
+                headers=headers,
             )
             if resp.status_code == 200:
                 data = resp.json()

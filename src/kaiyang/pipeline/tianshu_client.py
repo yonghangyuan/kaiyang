@@ -39,6 +39,7 @@ async def post_tianshu_audit(
 请评估此情报事件的重要性，并给出决策建议。"""
 
     try:
+        headers = {"Authorization": f"Bearer {settings.tianshu_token}"} if settings.tianshu_token else {}
         async with httpx.AsyncClient(timeout=30) as client:
             resp = await client.post(
                 f"{settings.tianshu_base_url}/run",
@@ -46,6 +47,7 @@ async def post_tianshu_audit(
                     "input": prompt,
                     "session_id": f"kaiyang-{action}",
                 },
+                headers=headers,
             )
             if resp.status_code == 200:
                 data = resp.json()

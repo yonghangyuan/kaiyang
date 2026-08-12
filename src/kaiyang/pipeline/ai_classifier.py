@@ -33,9 +33,11 @@ JSON:"""
 
     try:
         async with httpx.AsyncClient(timeout=30) as client:
+            headers = {"Authorization": f"Bearer {settings.tianshu_token}"} if settings.tianshu_token else {}
             resp = await client.post(
                 f"{settings.tianshu_base_url}/run",
                 json={"input": prompt, "session_id": "kaiyang-classifier"},
+                headers=headers,
             )
             if resp.status_code == 200:
                 content = resp.json().get("content", "")

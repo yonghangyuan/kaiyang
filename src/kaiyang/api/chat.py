@@ -35,10 +35,14 @@ async def chat(req: ChatRequest):
     )
 
     try:
+        headers = {}
+        if settings.tianshu_token:
+            headers["Authorization"] = f"Bearer {settings.tianshu_token}"
         async with httpx.AsyncClient(timeout=45) as client:
             resp = await client.post(
                 f"{settings.tianshu_base_url}/run",
                 json={"input": prompt, "session_id": "kaiyang-chat"},
+                headers=headers,
             )
             if resp.status_code == 200:
                 data = resp.json()

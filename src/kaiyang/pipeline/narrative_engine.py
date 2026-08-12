@@ -44,9 +44,11 @@ JSON:"""
 
     try:
         async with httpx.AsyncClient(timeout=45) as client:
+            headers = {"Authorization": f"Bearer {settings.tianshu_token}"} if settings.tianshu_token else {}
             resp = await client.post(
                 f"{settings.tianshu_base_url}/run",
                 json={"input": prompt, "session_id": "kaiyang-narrative"},
+                headers=headers,
             )
             if resp.status_code == 200:
                 content = resp.json().get("content", "")
@@ -91,9 +93,11 @@ JSON:"""
 
     try:
         async with httpx.AsyncClient(timeout=45) as client:
+            headers = {"Authorization": f"Bearer {settings.tianshu_token}"} if settings.tianshu_token else {}
             resp = await client.post(
                 f"{settings.tianshu_base_url}/run",
                 json={"input": prompt, "session_id": "kaiyang-briefing"},
+                headers=headers,
             )
             if resp.status_code == 200:
                 content = resp.json().get("content", "")
