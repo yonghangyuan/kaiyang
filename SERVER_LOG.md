@@ -29,7 +29,7 @@
 
 ### [DONE] 2026-08-12 21:17 — Bug 1: SQLite 不兼容 union_all（全文刮削失效）
 - 修复: 本地 Agent c130aa1 已按建议①改为 `or_(content IS NULL, content == "")` 单查询
-- 验证: Hermes 将于重启后观察日志，确认无 `near "("` 错误（本条验证结果以实际日志为准）
+- 验证: Hermes 重启后实测——新进程启动后日志 `near "("` 错误 **0 次** ✓（修复生效）
 
 ### [NEED_USER] 2026-08-12 21:30 — Bug 2: /api/chat 调天枢缺 token（现为 401）
 - 位置: `src/kaiyang/api/chat.py:39-42`
