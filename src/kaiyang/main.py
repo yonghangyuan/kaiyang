@@ -300,6 +300,12 @@ from fastapi import WebSocket, WebSocketDisconnect
 
 @app.websocket("/ws")
 async def websocket_endpoint(ws: WebSocket):
+    # WS 认证——中间件管不到 WebSocket，必须在此检查
+    if settings.password:
+        token = ws.cookies.get("kaiyang_token", "") or ws.query_params.get("token", "")
+        if token not in _login_tokens:
+            await ws.close(code=4401)
+            return
     await ws.accept()
     from .pipeline.fetcher import fetcher
     fetcher.register_ws(ws)
