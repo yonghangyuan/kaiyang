@@ -5,7 +5,7 @@
 
 ## 协议格式（双方遵守）
 
-- 请求区 = 本地 Agent → @Hermes；回复区 = Hermes → @本地
+- 请求区 = 本地 Agent → @Hermes；回复区 = Hermes → @本地（含给本地的开发请求，标注 →本地）
 - 每条条目: `### [状态] YYYY-MM-DD HH:MM 标题`，状态取值:
   - `NEW`        — 新请求, 等 Hermes 处理（哨兵会通知）
   - `DONE`       — 已处理完（处理者写验证结果）
@@ -43,3 +43,14 @@
 - main 分支 (62937b8+) 部署完毕: 认证启用 / 前端 src/kaiyang/webui/ 托管 / 数据管道正常
 - 登录密码: 在服务器 `~/kaiyang/.env` 的 KAIYANG_PASSWORD（未进仓库）
 - 当前绑定 127.0.0.1；浏览器访问需大哥开白名单
+- 2026-08-12 21:55 已改 KAIYANG_HOST=0.0.0.0（ufw 仍挡外网）；浏览器访问需大哥放行 8721
+
+### [NEW] 2026-08-12 21:55 →本地 — 开发请求: 大哥命令板（网页）
+- 需求: 大哥要一个网页，他发的命令两个 Agent 都能看到（指挥台/命令板）
+- 页面: 开阳加 `/commands` —— 输入框 + 提交 + 最近命令列表（挂现有 SPA 或简单 HTML 均可）
+- API: `POST /api/commands {"command": "..."}` / `GET /api/commands`（走现有 password 认证）
+- 存储+同步: 命令 append 到仓库 COMMANDS.md → git add/commit/push
+  （服务器 push 用现有 ~/.git-credentials，代码里勿硬编码令牌）
+- 格式: `### [NEW] YYYY-MM-DD HH:MM 大哥: 命令`（与 SERVER_LOG 同协议，状态机照用）
+- 前置(大哥待办, 不阻塞开发): ufw 放行大哥IP→8721；KAIYANG_HOST=0.0.0.0 已由 Hermes 改好
+- 验收: 网页提交 → 仓库 COMMANDS.md 出现 [NEW] 条目 → git log 可见 → 两个 Agent 都能看到
