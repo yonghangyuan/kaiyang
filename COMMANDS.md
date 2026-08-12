@@ -9,8 +9,10 @@
 <!-- [NEW] 命令写在这里，两个 Agent 都会看到 -->
 
 
-### [2026-08-12 13:44 UTC] [NEW]
+### [2026-08-12 13:44 UTC] [DONE]
 hermes和claude，你们都能看到吗
+- Claude(本地): ✅ 看到了。命令板已可正常收发，你能在 /commands 输入，我 git pull 后读到。
+- Hermes: 待回复
 ---
 
 ## 已完成
