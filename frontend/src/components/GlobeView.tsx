@@ -3,6 +3,9 @@ import GlobeLib from 'globe.gl'
 
 const Globe = (GlobeLib as any).default || GlobeLib
 
+// Higher-res NASA texture (2048px)
+const EARTH_TEX = 'https://unpkg.com/three-globe/example/img/earth-blue-marble.jpg'
+
 interface GeoPoint { id: string; title: string; lat: number; lng: number; severity?: number }
 interface Props { events: GeoPoint[]; onZoomToMap?: () => void }
 
@@ -14,15 +17,27 @@ export default function GlobeView({ events, onZoomToMap }: Props) {
   useEffect(() => {
     if (initRef.current || !containerRef.current) return
     initRef.current = true
+    const el = containerRef.current!
+
     try {
-      const g = Globe()(containerRef.current!)
-        .globeImageUrl('https://unpkg.com/three-globe/example/img/earth-blue-marble.jpg')
+      const g = Globe()(el)
+        .globeImageUrl(EARTH_TEX)
         .bumpImageUrl('https://unpkg.com/three-globe/example/img/earth-topology.png')
         .backgroundColor('#000011').atmosphereColor('#4488ff').atmosphereAltitude(0.25)
         .pointLat('lat').pointLng('lng').pointColor('color').pointRadius('size')
         .pointsMerge(true).pointsData([])
-      g.controls().autoRotate = false
-      g.controls().minDistance = 150
+
+      // Force stop auto-rotate — must use requestAnimationFrame to override globe.gl default
+      const stopRotate = () => {
+        if (!g.controls()) return
+        g.controls().autoRotate = false
+        g.controls().autoRotateSpeed = 0
+        g.controls().minDistance = 150
+      }
+      // Run immediately and again after globe.gl finishes internal init
+      stopRotate()
+      requestAnimationFrame(() => { stopRotate(); requestAnimationFrame(stopRotate) })
+
       globeRef.current = g
       renderPoints()
     } catch (e) { console.error('Globe error:', e) }
