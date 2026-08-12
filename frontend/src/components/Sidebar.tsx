@@ -3,6 +3,7 @@ import EntityGraph from './EntityGraph'
 import WordCloud from './WordCloud'
 import TrendChart from './TrendChart'
 import LiveFeed from './LiveFeed'
+import EntityProfile from './EntityProfile'
 
 interface Briefing { query: string; summary: string; point_count: number; timeline_count: number; web_count?: number; points: any[]; timeline: any[] }
 
@@ -18,6 +19,7 @@ export default function Sidebar({ briefing, chatMessages, onSearch, onChat, stat
   const [tab, setTab] = useState<'live'|'feed'|'chat'>('live')
   const [input, setInput] = useState('')
   const [graphEntity, setGraphEntity] = useState<string | null>(null)
+  const [profileEntity, setProfileEntity] = useState<string | null>(null)
   const send = () => { const msg = input.trim(); if (!msg) return; setInput(''); tab === 'chat' ? onChat(msg) : onSearch(msg) }
 
   const tColor = (t: any) => t.type==='web'?'#a855f7':t.type==='event'?'#eab308':'#3b82f6'
@@ -44,7 +46,11 @@ export default function Sidebar({ briefing, chatMessages, onSearch, onChat, stat
       <div style={{ flex: 1, overflow: 'auto', padding: '10px 12px', fontSize: 13 }}>
         {tab === 'live' && (
           <div>
-            <LiveFeed onSelectCountry={c => { onSearch(c) }} onSelectEntity={id => setGraphEntity(id)} onFlyTo={onFlyTo} />
+            {profileEntity ? (
+              <EntityProfile entityId={profileEntity} onClose={() => setProfileEntity(null)} />
+            ) : (
+              <LiveFeed onSelectCountry={c => { onSearch(c) }} onSelectEntity={id => setProfileEntity(id)} onFlyTo={onFlyTo} />
+            )}
             {briefing && briefing.summary && (
               <div style={{background:'var(--bg-card)',padding:10,borderRadius:6,marginTop:8,borderLeft:'3px solid var(--accent)'}}>
                 <div style={{fontSize:11,color:'var(--fg-dim)',marginBottom:4}}>Search: {briefing.query}</div>
@@ -71,9 +77,15 @@ export default function Sidebar({ briefing, chatMessages, onSearch, onChat, stat
           </div>
         ) : tab==='feed' ? (
           <div style={{fontSize:12}}>
-            <WordCloud />
-            <TrendChart />
-            {graphEntity && <EntityGraph entityId={graphEntity} onClose={()=>setGraphEntity(null)} />}
+            {profileEntity ? (
+              <EntityProfile entityId={profileEntity} onClose={() => setProfileEntity(null)} />
+            ) : (
+              <>
+                <WordCloud />
+                <TrendChart />
+                {graphEntity && <EntityGraph entityId={graphEntity} onClose={()=>setGraphEntity(null)} />}
+              </>
+            )}
           </div>
         ) : <div style={{ textAlign: 'center', padding: 40, color: 'var(--fg-dim)', fontSize: 13 }}>Enter search keywords</div>)}
         {tab === 'chat' && (
