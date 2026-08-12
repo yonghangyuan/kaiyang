@@ -65,38 +65,59 @@ async def add_command(req: CommandAdd):
 
 @router.get("/page")
 async def commands_page():
-    """命令板 Web 页面。"""
+    """实时群聊页面。"""
     html = """<!DOCTYPE html>
 <html lang="zh">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>开阳 · 命令板</title>
+<title>开阳 · 群聊</title>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
-body{font-family:-apple-system,sans-serif;background:#0a0e27;color:#c9d1d9;max-width:700px;margin:0 auto;padding:20px}
-h1{color:#e2c860;font-size:18px;margin-bottom:4px}
-.sub{color:#64748b;font-size:11px;margin-bottom:20px}
-input{width:100%;padding:10px;border-radius:6px;border:1px solid #1e2a4a;background:#0f1630;color:#c9d1d9;font-size:14px;margin-bottom:10px}
-button{background:#2563eb;color:#fff;border:none;padding:10px 20px;border-radius:6px;font-size:14px;cursor:pointer}
-button:hover{background:#1d4ed8}
-.card{background:#131a35;border:1px solid #1e2a4a;padding:12px;border-radius:8px;margin:8px 0;font-size:13px;line-height:1.6;white-space:pre-wrap}
-.card .meta{font-size:10px;color:#64748b;margin-bottom:4px}
-.status-new{color:#22c55e;font-weight:700}
-.status-done{color:#64748b}
-.loading{text-align:center;padding:20px;color:#64748b}
+body{font-family:-apple-system,sans-serif;background:#0a0e27;color:#c9d1d9;height:100vh;display:flex;flex-direction:column}
+.header{background:#131a35;padding:10px 16px;color:#e2c860;font-size:14px;font-weight:700;border-bottom:1px solid #1e2a4a;display:flex;align-items:center;gap:8px}
+.header .dot{width:8px;height:8px;border-radius:50%;background:#22c55e;animation:pulse 2s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:0.3}}
+.members{font-size:10px;color:#64748b;margin-left:auto}
+#msgs{flex:1;overflow-y:auto;padding:12px 16px}
+.msg{display:flex;margin:6px 0;animation:fadeIn .2s}
+@keyframes fadeIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
+.msg.mine{justify-content:flex-end}
+.bubble{max-width:75%;padding:8px 12px;border-radius:12px;font-size:13px;line-height:1.5;word-break:break-word}
+.msg.mine .bubble{background:#2563eb;color:#fff;border-bottom-right-radius:4px}
+.msg.other .bubble{background:#1e293b;border:1px solid #334155;border-bottom-left-radius:4px}
+.msg .sender{font-size:10px;margin-bottom:2px}
+.msg.mine .sender{text-align:right;color:#93c5fd}
+.msg.other .sender{color:#64748b}
+.msg .time{font-size:9px;color:#475569;margin-top:2px;text-align:right}
+.msg.hermes .bubble{border-color:#a855f7}
+.msg.hermes .sender{color:#c084fc}
+.msg.claude .bubble{border-color:#22c55e}
+.msg.claude .sender{color:#4ade80}
+.input-bar{background:#131a35;padding:10px 16px;border-top:1px solid #1e2a4a;display:flex;gap:8px}
+.input-bar input{flex:1;padding:10px;border-radius:8px;border:1px solid #1e2a4a;background:#0f1630;color:#c9d1d9;font-size:13px}
+.input-bar button{background:#2563eb;color:#fff;border:none;padding:10px 16px;border-radius:8px;font-size:13px;cursor:pointer;font-weight:600}
+.input-bar button:hover{background:#1d4ed8}
 </style>
 </head>
 <body>
-<h1>开阳 · 命令板</h1>
-<div class="sub">三方协作 — 输入命令，本地Agent和Hermes都会看到</div>
-<input id="cmd" placeholder="输入命令..." onkeypress="if(event.key==='Enter')addCommand()">
-<button onclick="addCommand()">发送命令</button>
-<div id="status" style="font-size:11px;color:#64748b;margin:8px 0"></div>
-<div id="content" class="loading">加载中...</div>
+<div class="header"><span class="dot"></span>开阳 · 群聊<span class="members">大哥 · Claude · Hermes</span></div>
+<div id="msgs"></div>
+<div class="input-bar">
+  <input id="input" placeholder="输入消息..." onkeypress="if(event.key==='Enter')send()">
+  <button onclick="send()">发送</button>
+</div>
 <script>
-async function load(){try{const r=await fetch('/api/commands');const d=await r.json();document.getElementById('content').innerHTML=render(d.content)}catch(e){document.getElementById('content').textContent='加载失败'}}
-function render(md){return md.split('\\n').map(l=>{if(l.startsWith('### [')){const isNew=l.includes('[NEW]');return '<div class="card"><div class="meta '+ (isNew?'status-new':'status-done') +'">'+l.replace('### ','')+'</div>'}if(l.startsWith('## '))return '</div><h3 style="color:#e2c860;font-size:14px;margin:16px 0 8px">'+l.replace('## ','')+'</h3>';if(l.startsWith('- '))return '<div style="font-size:11px;color:#94a3b8;margin:2px 0">'+l+'</div>';if(l.startsWith('#'))return '<h2 style="color:#e2c860;font-size:16px;margin:12px 0 4px">'+l.replace('# ','')+'</h2>';if(l.trim())return l+'<br>';return ''}).join('')}
-async function addCommand(){const cmd=document.getElementById('cmd').value.trim();if(!cmd)return;document.getElementById('status').textContent='发送中...';try{const r=await fetch('/api/commands',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({command:cmd})});const d=await r.json();if(d.ok){document.getElementById('cmd').value='';document.getElementById('status').textContent='已发送: '+d.time;load()}else{document.getElementById('status').textContent='错误: '+(d.error||'')}}catch(e){document.getElementById('status').textContent='发送失败'}}
+const ME='大哥',API='/api/chat-room';
+let lastTs='';
+function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}
+function addMsg(m){const div=document.createElement('div');div.className='msg '+(m.sender===ME?'mine':m.sender==='Claude'?'claude':m.sender==='Hermes'?'hermes':'other');
+div.innerHTML='<div><div class="sender">'+esc(m.sender)+'</div><div class="bubble">'+esc(m.content)+'</div><div class="time">'+esc(m.time||'')+'</div></div>';
+document.getElementById('msgs').appendChild(div);div.scrollIntoView(false)}
+async function load(){try{const r=await fetch(API+'/messages?limit=50');const d=await r.json();document.getElementById('msgs').innerHTML='';d.messages.forEach(addMsg);if(d.messages.length)lastTs=d.messages[d.messages.length-1].time}catch(e){}}
+async function send(){const input=document.getElementById('input'),content=input.value.trim();if(!content)return;input.value='';
+try{await fetch(API+'/send',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sender:ME,content})})}catch(e){addMsg({sender:'系统',content:'发送失败',time:new Date().toLocaleTimeString()})}}
+// SSE实时连接
+const es=new EventSource(API+'/stream');es.onmessage=function(e){try{const m=JSON.parse(e.data);if(m.sender!==ME)addMsg(m);lastTs=m.time}catch(err){}};es.onerror=function(){setTimeout(()=>{load()},3000)};
 load()
 </script>
 </body>
