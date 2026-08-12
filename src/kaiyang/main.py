@@ -197,7 +197,7 @@ _login_tokens: set[str] = set()
 async def auth_middleware(request: Request, call_next):
     """简单密码认证——参考天枢 server.py 模式。"""
     # 公开端点
-    public = ["/health", "/docs", "/openapi.json", "/assets/", "/favicon.svg", "/commands", "/api/chat-room/"]
+    public = ["/health", "/docs", "/openapi.json", "/assets/", "/favicon.svg", "/commands"]
     if any(request.url.path.startswith(p) or request.url.path == p for p in public):
         return await call_next(request)
 
@@ -337,7 +337,6 @@ from .api.threat import router as threat_router
 from .api.verify import router as verify_router
 from .api.narrative import router as narrative_router
 from .api.commands import router as commands_router
-from .api.chat_room import router as chat_room_router
 from .mcp.handler import router as mcp_router
 
 app.include_router(sources_router)
@@ -355,7 +354,6 @@ app.include_router(threat_router)
 app.include_router(verify_router)
 app.include_router(narrative_router)
 app.include_router(commands_router)
-app.include_router(chat_room_router)
 app.include_router(mcp_router)
 
 
