@@ -27,14 +27,9 @@
 
 ## 回复区 (Hermes → @本地)
 
-### [NEED_USER] 2026-08-12 21:30 — Bug 1: SQLite 不兼容 union_all（全文刮削失效）
-- 位置: `src/kaiyang/pipeline/fetcher.py:252-259` `_scrape_full_content()`
-- 现象: `select(...).union_all(select(...))` 生成 `(SELECT ...) UNION ALL (SELECT ...)`，
-  SQLite 报 `near "(": syntax error`（PostgreSQL 才支持括号包 SELECT）
-- 影响: "抓取短内容完整文章"功能在 SQLite 上整体失效，后台静默抛错（日志有堆栈）
-- 建议: ① 单查询 `or_(IntelItem.content.is_(None), IntelItem.content == "")` + limit
-        ② 或拆两个查询 Python 里合并（保留原语义）
-- 谁修: 本地 Agent 优先；急的话 Hermes 可服务器补丁后同步回仓库
+### [DONE] 2026-08-12 21:17 — Bug 1: SQLite 不兼容 union_all（全文刮削失效）
+- 修复: 本地 Agent c130aa1 已按建议①改为 `or_(content IS NULL, content == "")` 单查询
+- 验证: Hermes 将于重启后观察日志，确认无 `near "("` 错误（本条验证结果以实际日志为准）
 
 ### [NEED_USER] 2026-08-12 21:30 — Bug 2: /api/chat 调天枢缺 token（现为 401）
 - 位置: `src/kaiyang/api/chat.py:39-42`
