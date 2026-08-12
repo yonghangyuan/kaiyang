@@ -206,6 +206,32 @@ class Annotation(Base):
     created_at = Column(DateTime(timezone=True), default=_utcnow)
 
 
+# ── 设施 ──────────────────────────────────────────────────────
+
+class Facility(Base):
+    """设施（军事基地/核设施/港口/机场/能源等）。
+
+    参考 Redroom facilities 表: 静态情报资产，支持地理标注和威胁评估。
+    """
+    __tablename__ = "facilities"
+
+    id = Column(String(64), primary_key=True, default=lambda: _new_id("FC"))
+    name = Column(String(256), nullable=False)
+    facility_type = Column(String(32), nullable=False, index=True)  # military_base/nuclear/port/airport/energy/spaceport
+    country_code = Column(String(8), index=True)
+    lat = Column(Float)
+    lng = Column(Float)
+    description = Column(Text)
+    operator = Column(String(256))  # 运营方
+    threat_level = Column(Integer, default=1)  # 1-5
+    status = Column(String(32), default="active")  # active/inactive/under_construction
+    source = Column(String(256))  # 数据来源
+    created_at = Column(DateTime(timezone=True), default=_utcnow)
+
+    def __repr__(self):
+        return f"<Facility [{self.facility_type}] {self.name}>"
+
+
 # ── 实体关系表 ──────────────────────────────────────────────────
 
 # 使用 Table 而非 ORM 类（简单关联表，不需要 ORM 特性）

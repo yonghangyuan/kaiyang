@@ -85,6 +85,9 @@ async def lifespan(app: FastAPI):
         print("[开阳] 数据库初始化完成")
         await _seed_default_sources()
         print("[开阳] 默认数据源已注册")
+        from .pipeline.seed_facilities import seed_facilities
+        n = await seed_facilities()
+        if n > 0: print(f"[开阳] 设施数据: {n} 个")
     except Exception as e:
         print(f"[开阳] 数据库初始化失败: {e}")
 
@@ -272,6 +275,7 @@ from .api.chat import router as chat_router
 from .api.annotations import router as annotations_router
 from .api.export import router as export_router
 from .api.trends import router as trends_router
+from .api.facilities import router as facilities_router
 from .mcp.handler import router as mcp_router
 
 app.include_router(sources_router)
@@ -284,6 +288,7 @@ app.include_router(chat_router)
 app.include_router(annotations_router)
 app.include_router(export_router)
 app.include_router(trends_router)
+app.include_router(facilities_router)
 app.include_router(mcp_router)
 
 
