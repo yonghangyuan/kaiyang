@@ -278,6 +278,7 @@ from .api.trends import router as trends_router
 from .api.facilities import router as facilities_router
 from .api.threat import router as threat_router
 from .api.verify import router as verify_router
+from .api.narrative import router as narrative_router
 from .mcp.handler import router as mcp_router
 
 app.include_router(sources_router)
@@ -293,6 +294,7 @@ app.include_router(trends_router)
 app.include_router(facilities_router)
 app.include_router(threat_router)
 app.include_router(verify_router)
+app.include_router(narrative_router)
 app.include_router(mcp_router)
 
 
