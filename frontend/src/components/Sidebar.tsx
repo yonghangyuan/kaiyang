@@ -2,6 +2,7 @@ import { useState } from 'react'
 import EntityGraph from './EntityGraph'
 import WordCloud from './WordCloud'
 import TrendChart from './TrendChart'
+import LiveFeed from './LiveFeed'
 
 interface Briefing { query: string; summary: string; point_count: number; timeline_count: number; web_count?: number; points: any[]; timeline: any[] }
 
@@ -40,7 +41,18 @@ export default function Sidebar({ briefing, chatMessages, onSearch, onChat, stat
         <span style={{marginLeft:'auto',color:'#64748b'}}>●Event ●EQ ●Social ●Search ●Anno</span>
       </div>}
       <div style={{ flex: 1, overflow: 'auto', padding: '10px 12px', fontSize: 13 }}>
-        {tab === 'live' && (briefing ? (
+        {tab === 'live' && (
+          <div>
+            <LiveFeed onSelectCountry={c => { onSearch(c) }} onSelectEntity={id => setGraphEntity(id)} />
+            {briefing && briefing.summary && (
+              <div style={{background:'var(--bg-card)',padding:10,borderRadius:6,marginTop:8,borderLeft:'3px solid var(--accent)'}}>
+                <div style={{fontSize:11,color:'var(--fg-dim)',marginBottom:4}}>Search: {briefing.query}</div>
+                <div style={{fontSize:12,lineHeight:1.6}}>{briefing.summary.replace(/\*\*/g,'').replace(/^#{1,4}\s/gm,'').trim()}</div>
+                <div style={{fontSize:11,color:'var(--fg-dim)',marginTop:4}}>{briefing.timeline_count} items</div>
+              </div>
+            )}
+          </div>
+        )}
           <div>
             {briefing.summary && <div style={{ background: 'var(--bg-card)', padding: 10, borderRadius: 6, marginBottom: 12, borderLeft: '3px solid var(--accent)', lineHeight: 1.6 }}>{briefing.summary.replace(/\*\*/g,'').replace(/^#{1,4}\s/gm,'').replace(/^---+/gm,'').replace(/```[\s\S]*?```/g,'').replace(/`([^`]+)`/g,'$1').trim()}</div>}
             <div style={{ color: 'var(--yellow)', marginBottom: 4 }}>Timeline ({briefing.timeline_count}{briefing.web_count ? ' + web'+briefing.web_count : ''})</div>

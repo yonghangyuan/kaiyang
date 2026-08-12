@@ -10,7 +10,7 @@ from fastapi import APIRouter, Query
 from pydantic import BaseModel
 
 from ..db import async_session
-from ..models import IntelItem, Event, Issue
+from ..models import IntelItem, Event, Issue, Source
 from .services import pipeline_service
 
 router = APIRouter(prefix="/api", tags=["events"])
@@ -131,6 +131,44 @@ async def trigger_aggregation(limit: int = 200):
     """手动触发事件聚合。"""
     result = await pipeline_service.trigger_aggregate(limit)
     return {"ok": True, "result": result}
+
+
+@router.get("/feed")
+async def intel_feed(
+    limit: int = 30, offset: int = 0,
+    country: str | None = None, source_type: str | None = None,
+):
+    """实时情报流——LIVE 标签默认视图。"""
+    async with async_session() as db:
+        q = select(IntelItem).order_by(IntelItem.published_at.desc())
+        if country:
+            q = q.where(IntelItem.country_code == country)
+        if source_type:
+            q = q.where(IntelItem.source_id.in_(
+                select(Source.id).where(Source.type == source_type)
+            ))
+        q = q.offset(offset).limit(limit)
+        result = await db.execute(q)
+        items = result.scalars().all()
+
+        total = await db.scalar(
+            select(func.count(IntelItem.id))
+        )
+
+    return {
+        "total": total, "limit": limit, "offset": offset,
+        "items": [
+            {
+                "id": i.id, "title": i.title, "url": i.url,
+                "published_at": i.published_at.isoformat() if i.published_at else "",
+                "country_code": i.country_code,
+                "source_id": i.source_id, "language": i.language,
+                "lat": i.lat, "lng": i.lng,
+                "raw_data": i.raw_data,
+            }
+            for i in items
+        ],
+    }
 
 
 @router.get("/events/{event_id}/items")
