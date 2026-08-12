@@ -228,7 +228,7 @@ class IntelFetcher:
             """快通道: API 源 + 中文搜索，高频抓取。"""
             while self._running:
                 try:
-                    result = await self._fetch_by_types(["gdelt", "usgs", "websearch"])
+                    result = await self._fetch_by_types(["gdelt", "usgs", "baidu"])
                     if result.get("fetched", 0) > 0:
                         print(f"[快速通道] {result}")
                 except Exception as e:

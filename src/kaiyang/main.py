@@ -60,7 +60,7 @@ async def _seed_default_sources():
         # Tier 1 — 实时API
         {"name": "USGS Earthquakes", "type": "usgs", "url": "usgs", "credibility_tier": 1},
         {"name": "GDELT Global", "type": "gdelt", "url": "gdelt", "credibility_tier": 1},
-        {"name": "中文新闻搜索", "type": "websearch", "url": "websearch", "credibility_tier": 2, "config": {"keywords": "国际新闻,中国外交,台海,中东局势,朝鲜半岛,俄乌冲突,南海"}},
+        {"name": "百度新闻", "type": "baidu", "url": "baidu", "credibility_tier": 2, "config": {"keywords": "国际,台海,中东,军事,外交,朝鲜,南海"}},
     ]
 
     async with async_session() as db:
@@ -186,6 +186,56 @@ async def request_timeout_middleware(request: Request, call_next):
         return await _aio.wait_for(call_next(request), timeout=60.0)
     except _aio.TimeoutError:
         return _JSONResponse(status_code=504, content={"error": True, "message": "Request timeout (60s)"})
+
+
+# ── 认证中间件 ──────────────────────────────────────────────
+
+import secrets as _secrets
+_login_tokens: set[str] = set()
+
+@app.middleware("http")
+async def auth_middleware(request: Request, call_next):
+    """简单密码认证——参考天枢 server.py 模式。"""
+    # 公开端点
+    public = ["/health", "/docs", "/openapi.json", "/assets/", "/favicon.svg"]
+    if any(request.url.path.startswith(p) or request.url.path == p for p in public):
+        return await call_next(request)
+
+    # 无密码模式
+    if not settings.password:
+        return await call_next(request)
+
+    # SPA 首页
+    if request.url.path == "/" or request.url.path == "/map":
+        return await call_next(request)
+
+    # 检查 token
+    token = request.cookies.get("kaiyang_token", "")
+    if token in _login_tokens:
+        return await call_next(request)
+    token = request.query_params.get("token", "")
+    if token in _login_tokens:
+        return await call_next(request)
+
+    # 登录接口
+    if request.url.path == "/login" and request.method == "POST":
+        return await call_next(request)
+
+    return _JSONResponse({"error": "请先登录 /login"}, status_code=401)
+
+
+@app.post("/login")
+async def login(request: Request):
+    """登录——POST {password: 'xxx'} → token。"""
+    body = await request.json()
+    pwd = body.get("password", "")
+    if pwd != settings.password:
+        return _JSONResponse({"error": "密码错误"}, status_code=401)
+    token = _secrets.token_hex(16)
+    _login_tokens.add(token)
+    resp = _JSONResponse({"ok": True, "token": token})
+    resp.set_cookie("kaiyang_token", token, httponly=True)
+    return resp
 
 
 # ── React SPA 首页 ───────────────────────────────────────────

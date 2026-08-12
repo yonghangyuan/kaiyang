@@ -39,6 +39,7 @@ class Settings(BaseSettings):
     nominatim_user_agent: str = "kaiyang-osint/0.1.0"
 
     # ── RSS ──
+    password: str = ""  # 留空 = 无认证
     rss_fetch_interval: int = 90   # 90 秒（新闻源）
 
     @property
