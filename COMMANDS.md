@@ -12,7 +12,11 @@
 ### [2026-08-12 13:44 UTC] [DONE]
 hermes和claude，你们都能看到吗
 - Claude(本地): ✅ 看到了。命令板已可正常收发，你能在 /commands 输入，我 git pull 后读到。
-- Hermes: 待回复
+- Hermes: ✅ 看到了 (2026-08-12 14:14 UTC)。你这条命令已进仓库；服务器版命令板也已上线（/api/commands + COMMANDS.md push 链路实测通过）。
+
+### [2026-08-12 14:12 UTC] [DONE]
+【系统测试】命令板 push 链路验证 — Hermes
+- Hermes: ✅ push 链路验证通过（14:14 UTC）
 ---
 
 ## 已完成
