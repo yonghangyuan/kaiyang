@@ -42,6 +42,13 @@ def evaluate_source_credibility(source: Source) -> int:
       4. 域名在 Tier 4 (社交媒体) → Tier 4
       5. 无匹配 → Tier 3 (默认)
     """
+    # 手动标注优先: config.credibility_manual=True 时保持当前 tier。
+    # P0 修复: 原逻辑用 tier != 3 判断手动标注，无法区分手动与自动评估，
+    # 导致自动评估过一次的源被永久冻结、再也不会重新评估。
+    cfg = source.config or {}
+    if cfg.get("credibility_manual"):
+        return source.credibility_tier or 3
+
     url = source.url or ""
     try:
         domain = urlparse(url).netloc.lower()
@@ -50,11 +57,6 @@ def evaluate_source_credibility(source: Source) -> int:
             domain = domain[4:]
     except Exception:
         domain = ""
-
-    # 手动标注优先（非默认值）
-    current = source.credibility_tier or 3
-    if current != 3:
-        return current
 
     # 域名匹配
     for tier1_domain in _TIER1_DOMAINS:

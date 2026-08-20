@@ -24,6 +24,30 @@ from ..sources.retry import source_retry
 from .content_scraper import scrape_article
 
 
+# ── 周期抓取通道 (P0 修复: 原实现漏掉 websearch/zhihu/weibo/xhs) ────────
+
+FAST_TYPES = ["gdelt", "usgs", "baidu"]                    # 快通道: 实时 API，60s
+SLOW_TYPES = ["rss"]                                       # 慢通道: RSS，90s
+SOCIAL_TYPES = ["websearch", "zhihu", "weibo", "xhs"]      # 社交/搜索通道，300s
+SOCIAL_INTERVAL_SEC = 300
+
+
+def should_fetch_source(source: Source, now: float | None = None) -> bool:
+    """是否应抓取该源：非 paused 且不在失败退避期内。
+
+    P0 修复: 原健康检查会把 stale/inactive 写入 status，而 fetcher 只查
+    status == "active"，导致源被永久跳过。现在改为只跳过手动暂停的源，
+    连续失败的源按指数退避重试，成功后自动恢复。
+    """
+    if source.status == "paused":
+        return False
+    cfg = source.config or {}
+    backoff_until = cfg.get("error_backoff_until") or 0
+    if now is None:
+        now = time.time()
+    return backoff_until <= now
+
+
 def _quick_score(title: str, content: str) -> int:
     """快速重要性评分 (1-10)，基于关键词匹配。"""
     text = (title + " " + content).lower()
@@ -96,12 +120,14 @@ class IntelFetcher:
         started = time.monotonic()
         self._stats = {"fetched": 0, "stored": 0, "skipped": 0, "errors": 0}
 
+        now = time.time()
         async with async_session() as db:
-            q = select(Source).where(Source.status == "active")
+            q = select(Source).where(Source.status != "paused")
             if source_types:
                 q = q.where(Source.type.in_(source_types))
             result = await db.execute(q)
-            sources = result.scalars().all()
+            # 跳过失败退避期内的源（指数退避重试，而非永久杀死）
+            sources = [s for s in result.scalars().all() if should_fetch_source(s, now)]
 
         if not sources:
             return self._stats
@@ -217,7 +243,7 @@ class IntelFetcher:
                 await db.commit()
 
     async def start_periodic(self, interval_sec: int | None = None) -> None:
-        """启动双通道定时抓取: 快通道(API源60s) + 慢通道(RSS 90s)。"""
+        """启动三通道定时抓取: 快通道(API 60s) + 慢通道(RSS 90s) + 社交通道(300s)。"""
         if self._running:
             return
 
@@ -228,7 +254,7 @@ class IntelFetcher:
             """快通道: API 源 + 中文搜索，高频抓取。"""
             while self._running:
                 try:
-                    result = await self._fetch_by_types(["gdelt", "usgs", "baidu"])
+                    result = await self._fetch_by_types(FAST_TYPES)
                     if result.get("fetched", 0) > 0:
                         print(f"[快速通道] {result}")
                 except Exception as e:
@@ -239,15 +265,27 @@ class IntelFetcher:
             """慢通道: RSS 源，低频抓取。"""
             while self._running:
                 try:
-                    result = await self._fetch_by_types(["rss"])
+                    result = await self._fetch_by_types(SLOW_TYPES)
                     if result.get("fetched", 0) > 0:
                         print(f"[慢通道] {result}")
                 except Exception as e:
                     print(f"[慢通道] 错误: {e}")
                 await asyncio.sleep(interval)  # 每90秒
 
+        async def _social_loop():
+            """社交通道: websearch/知乎/微博/小红书（P0 修复: 原先无周期抓取）。"""
+            while self._running:
+                try:
+                    result = await self._fetch_by_types(SOCIAL_TYPES)
+                    if result.get("fetched", 0) > 0:
+                        print(f"[社交通道] {result}")
+                except Exception as e:
+                    print(f"[社交通道] 错误: {e}")
+                await asyncio.sleep(SOCIAL_INTERVAL_SEC)  # 每300秒
+
         self._task = asyncio.create_task(_fast_loop())
         self._task2 = asyncio.create_task(_slow_loop())
+        self._task3 = asyncio.create_task(_social_loop())
 
     async def _scrape_full_content(self, limit: int = 10):
         """后台刮削短内容的完整文章。"""
@@ -274,7 +312,7 @@ class IntelFetcher:
     async def stop(self) -> None:
         """停止定时抓取。"""
         self._running = False
-        for t in [getattr(self, '_task', None), getattr(self, '_task2', None)]:
+        for t in [getattr(self, '_task', None), getattr(self, '_task2', None), getattr(self, '_task3', None)]:
             if t:
                 t.cancel()
                 try:

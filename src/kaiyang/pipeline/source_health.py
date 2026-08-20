@@ -8,6 +8,7 @@
 
 from __future__ import annotations
 
+import time
 from datetime import datetime, timedelta, timezone
 from sqlalchemy import select
 
@@ -45,11 +46,14 @@ async def check_source_health() -> dict:
                 "errors": errors, "last_count": last_count,
             }
 
+            # P0 修复: 健康检查只报告不修改 status。
+            # 原实现把 stale/inactive 写入 status，而 fetcher 只查 status=="active"，
+            # 被标记的源永远不再被抓取（死锁）。现在改为: 只跳过手动 paused 的源，
+            # 连续失败的源由 record_fetch_error 写入指数退避，到期自动重试。
             if source.status == "paused":
                 detail["health"] = "paused"
             elif errors >= 5:
                 detail["health"] = "error"
-                source.status = "error"
                 health["error"] += 1
             elif last is None:
                 detail["health"] = "ok"  # 首次启动
@@ -60,11 +64,9 @@ async def check_source_health() -> dict:
                 age = now - last
                 if age > timedelta(hours=24):
                     detail["health"] = "error"
-                    source.status = "inactive"
                     health["error"] += 1
                 elif age > timedelta(hours=12):
                     detail["health"] = "warn"
-                    source.status = "stale"
                     health["warn"] += 1
                 elif age > timedelta(hours=2):
                     detail["health"] = "stale"
@@ -91,12 +93,14 @@ async def record_fetch_success(source_id: str, record_count: int = 0) -> None:
         if source:
             source.last_fetch_at = datetime.now(timezone.utc)
             source.status = "active"
-            source.config = {
+            new_cfg = {
                 **(source.config or {}),
                 "consecutive_errors": 0,
                 "last_success": datetime.now(timezone.utc).isoformat(),
                 "last_record_count": record_count,
             }
+            new_cfg.pop("error_backoff_until", None)  # 成功即清除退避
+            source.config = new_cfg
             await db.commit()
 
 
@@ -106,11 +110,14 @@ async def record_fetch_error(source_id: str, error_msg: str) -> None:
         result = await db.execute(select(Source).where(Source.id == source_id))
         source = result.scalar_one_or_none()
         if source:
-            cfg = source.config or {}
+            cfg = dict(source.config or {})
             errors = cfg.get("consecutive_errors", 0) + 1
             cfg["consecutive_errors"] = errors
             cfg["last_error"] = error_msg[:500]
             cfg["last_error_time"] = datetime.now(timezone.utc).isoformat()
+            # 指数退避: 60s * 2^(errors-1)，上限 1 小时
+            backoff_sec = min(60 * (2 ** (errors - 1)), 3600)
+            cfg["error_backoff_until"] = time.time() + backoff_sec
             if errors >= 5:
                 source.status = "error"
             source.config = cfg
