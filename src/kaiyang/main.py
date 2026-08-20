@@ -61,19 +61,38 @@ async def _seed_default_sources():
         {"name": "USGS Earthquakes", "type": "usgs", "url": "usgs", "credibility_tier": 1},
         {"name": "GDELT Global", "type": "gdelt", "url": "gdelt", "credibility_tier": 1},
         {"name": "百度新闻", "type": "baidu", "url": "baidu", "credibility_tier": 2, "config": {"keywords": "国际,台海,中东,军事,外交,朝鲜,南海"}},
+        # Tier 3/4 — 知乎信源（UAP 专题）
+        {"name": "知乎·UAP话题", "type": "zhihu", "url": "zhihu", "credibility_tier": 3, "config": {"keywords": "UAP,不明飞行物,外星人,UFO,飞碟"}},
+        {"name": "知乎·韩真宇", "type": "zhihu", "url": "zhihu", "credibility_tier": 4, "config": {"users": "23she-shi-du", "fallback_keywords": "韩真宇 外星人"}},
+        # Tier 2 — 欧洲风险监测（信源协议, 2026-08-13）
+        {"name": "Politico Europe", "type": "rss", "url": "https://www.politico.eu/feed/", "credibility_tier": 2},
+        {"name": "Euractiv", "type": "rss", "url": "https://www.euractiv.com/feed/", "credibility_tier": 2},
+        {"name": "Euronews", "type": "rss", "url": "https://www.euronews.com/rss?euronews_news=top-stories", "credibility_tier": 2},
+        {"name": "DW World", "type": "rss", "url": "https://rss.dw.com/rdf/rss-en-world", "credibility_tier": 2},
+        {"name": "France24", "type": "rss", "url": "https://www.france24.com/en/rss", "credibility_tier": 2},
+        {"name": "百度新闻·欧洲风险", "type": "baidu", "url": "baidu", "credibility_tier": 2, "config": {"keywords": "欧洲经济,德国工业,AfD,勒庞,法国大选,霍尔木兹,欧盟防务"}},
     ]
 
     async with async_session() as db:
         for d in defaults:
             result = await db.execute(select(Source).where(Source.name == d["name"]))
-            if result.scalar_one_or_none() is None:
+            existing = result.scalar_one_or_none()
+            if existing is None:
                 db.add(Source(
                     id=_new_id("SRC"),
                     name=d["name"],
                     type=d["type"],
                     url=d["url"],
                     credibility_tier=d["credibility_tier"],
+                    # 种子源 tier 为人工策展结果，标记手动覆盖，
+                    # 防止自动评估按域名规则改写（P0 修复）
+                    config={**d.get("config", {}), "credibility_manual": True},
                 ))
+            else:
+                # 迁移: 旧库中已存在的种子源补上手动覆盖标记
+                existing_config = dict(existing.config or {})
+                if not existing_config.get("credibility_manual"):
+                    existing.config = {**existing_config, "credibility_manual": True}
         await db.commit()
 
 
@@ -89,6 +108,12 @@ async def lifespan(app: FastAPI):
         from .pipeline.seed_facilities import seed_facilities
         n = await seed_facilities()
         if n > 0: print(f"[开阳] 设施数据: {n} 个")
+        from .pipeline.seed_uap_disclosure import seed_uap_disclosure
+        r = await seed_uap_disclosure()
+        if sum(r.values()) > 0: print(f"[开阳] UAP 披露线知识库: {r}")
+        from .pipeline.seed_finance_distortion import seed_finance_distortion
+        rf = await seed_finance_distortion()
+        if sum(rf.values()) > 0: print(f"[开阳] 金融信息失真知识库: {rf}")
     except Exception as e:
         print(f"[开阳] 数据库初始化失败: {e}")
 
@@ -399,7 +424,7 @@ h1{color:#e2c860;margin-bottom:4px;font-size:24px}
 </div>
 <div style="margin-top:20px;font-size:11px;color:#475569">
   <span>API: /api/sources | /api/intel | /api/events | /api/issues</span><br>
-  <span>MCP: POST /mcp (5 tools) | 天枢: 配置中的地址</span>
+  <span>MCP: POST /mcp (11 tools) | 天枢: 配置中的地址</span>
 </div>
 </div>
 </body>
