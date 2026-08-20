@@ -18,6 +18,16 @@ export default function App() {
   const [viewMode, setViewMode] = useState<'2d'|'3d'>('2d')
   const [flyTo, setFlyTo] = useState<{lat:number;lng:number} | null>(null)
   const [chain, setChain] = useState<any>(null)
+  const [topicLayers, setTopicLayers] = useState<{issue_id:string;name:string;category?:string;events?:number;mappable_events?:number}[]>([])
+  const [activeTopics, setActiveTopics] = useState<string[]>([])
+
+  const loadTopicLayers = async () => {
+    try { const d = await fetch('/api/map/layers').then(r => r.json()); setTopicLayers(d.topic_layers||[]) } catch {}
+  }
+  useEffect(() => { loadTopicLayers() }, [])
+  const toggleTopic = (issueId: string) => {
+    setActiveTopics(prev => prev.includes(issueId) ? prev.filter(id => id !== issueId) : [...prev, issueId])
+  }
 
   const loadEvents = async () => {
     try { const d = await api.events(); setEvents(d.points||[]); setStatus('事件: '+d.count) } catch { setStatus('加载失败') }
@@ -34,6 +44,13 @@ export default function App() {
     es.onmessage = (evt) => {
       try {
         const d = JSON.parse(evt.data)
+        if (d.type === 'new_event') {
+          setStatus(`新事件: ${(d.title||'').substring(0,40)}`)
+          loadEvents(); loadStats()
+          if (d.level === 'warning' && (Notification as any).permission === 'granted') {
+            new Notification('开阳 新事件', { body: `${(d.title||'').substring(0,60)} sev:${d.severity}`, icon: '/favicon.svg' })
+          }
+        }
         if (d.type === 'fetch_complete' && d.new_items > 0) {
           setStatus(`新增: ${d.new_items} 条`)
           loadEvents(); loadStats()
@@ -104,7 +121,7 @@ export default function App() {
       <div style={{display:'flex',flex:1,overflow:'hidden'}}>
         <div style={{flex:1,position:'relative'}}>
           <div style={{display:viewMode==='2d'?'block':'none',width:'100%',height:'100%'}}>
-            <MapView events={events} searchResults={searchResults} annotations={annotations} chain={chain} flyTo={flyTo}/>
+            <MapView events={events} searchResults={searchResults} annotations={annotations} chain={chain} flyTo={flyTo} topicLayers={topicLayers} activeTopics={activeTopics} onToggleTopic={toggleTopic}/>
           </div>
           <div style={{display:viewMode==='3d'?'block':'none',width:'100%',height:'100%'}}>
             <GlobeView events={[...events, ...searchResults]} onZoomToMap={() => setViewMode('2d')}/>
