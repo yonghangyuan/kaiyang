@@ -123,6 +123,9 @@ async def lifespan(app: FastAPI):
         from .pipeline.seed_finance_distortion import seed_finance_distortion
         rf = await seed_finance_distortion()
         if sum(rf.values()) > 0: print(f"[开阳] 金融信息失真知识库: {rf}")
+        from .pipeline.seed_sanxingdui import seed_sanxingdui
+        rs = await seed_sanxingdui()
+        if sum(rs.values()) > 0: print(f"[开阳] 三星堆知识库: {rs}")
     except Exception as e:
         print(f"[开阳] 数据库初始化失败: {e}")
 
