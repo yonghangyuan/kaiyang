@@ -23,6 +23,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import io
 import sys
 from datetime import datetime, timezone
@@ -36,6 +37,7 @@ from ..db import async_session
 from ..models import (
     Entity,
     Event,
+    IntelItem,
     Issue,
     IssueEvent,
     Source,
@@ -171,11 +173,47 @@ def _parse_date(s: str | None):
     return None
 
 
+BRIEF_ITEM_ID = hashlib.sha256(b"kaiyang|sanxingdui-brief|2026-08-20").hexdigest()[:16]
+_BRIEF_PUBLISHED = datetime(2026, 8, 20, 0, 0, tzinfo=timezone.utc)
+
+
+def _brief_content() -> str:
+    """生成专题简报全文（事件时间线 + 文献互认边），入 FTS5 可检索层。"""
+    lines = [
+        "# 三星堆·古蜀文明：考古与文献互认（专题简报）",
+        "",
+        ISSUE_DESC,
+        "",
+        "## 时间线",
+        "",
+    ]
+    for ev in SEED_EVENTS:
+        verify_tag = {"fact": "[已证实]", "claim": "[主张]", "debunk": "[已证伪]"}[ev["verify"]]
+        lines.append(f"- {ev['start']} {verify_tag} {ev['title']}：{ev['desc']}")
+    lines += ["", "## 文献↔考古互认边（置信度分层）", ""]
+    for src, tgt, rel, conf in SEED_RELATIONS:
+        if rel in ("text_artifact_link", "records"):
+            lines.append(f"- {src} → {tgt}（{rel}, conf={conf}）")
+    lines += [
+        "",
+        "## 关键文物",
+        "",
+        "- 青铜纵目面具：宽1.38米，眼球柱状外凸16厘米",
+        "- 青铜神树：高3.96米，三层九枝九鸟",
+        "- 金杖：长1.42米，鱼鸟纹",
+        "- 青铜大立人像：通高2.62米",
+        "",
+        "「外星文明」说：学界主流从未采信，碳十四与器物谱系均指向本土青铜文明。",
+    ]
+    return "\n".join(lines)
+
+
 async def seed_sanxingdui() -> dict[str, int]:
     """导入三星堆知识（幂等）。返回各表新增计数。"""
     from sqlalchemy import and_, select
 
-    stats = {"issue": 0, "events": 0, "issue_events": 0, "entities": 0, "relations": 0}
+    stats = {"issue": 0, "events": 0, "issue_events": 0, "entities": 0, "relations": 0,
+             "source": 0, "intel_item": 0}
 
     async with async_session() as db:
         # 1. Issue
@@ -186,6 +224,28 @@ async def seed_sanxingdui() -> dict[str, int]:
             db.add(issue)
             stats["issue"] += 1
         await db.flush()
+
+        # 2. Source + 专题简报 IntelItem（全文入 FTS5）
+        src = (await db.execute(select(Source).where(Source.name == "本地分析"))).scalar_one_or_none()
+        if src is None:
+            src = Source(id=_new_id("SRC"), name="本地分析", type="analysis", url="local",
+                         credibility_tier=2, status="active", config={"category": "research_report"})
+            db.add(src)
+            stats["source"] = 0  # 复用已有源不计
+        await db.flush()
+
+        brief = (await db.execute(select(IntelItem).where(IntelItem.id == BRIEF_ITEM_ID))).scalar_one_or_none()
+        if brief is None:
+            db.add(IntelItem(
+                id=BRIEF_ITEM_ID, source_id=src.id,
+                title="三星堆·古蜀文明：考古与文献互认（专题简报）",
+                content=_brief_content(), url="file:///F:/kaiyang/analysis/",
+                published_at=_BRIEF_PUBLISHED, fetched_at=datetime.now(timezone.utc),
+                language="zh", country_code="CN",
+                lat=30.99, lng=104.20,
+                raw_data={"doc_type": "analysis_brief", "topic": "sanxingdui"},
+            ))
+            stats["intel_item"] += 1
 
         # 2. Events + 事件链
         for i, ev in enumerate(SEED_EVENTS):
@@ -243,12 +303,6 @@ async def seed_sanxingdui() -> dict[str, int]:
                     relation_type=rel_type, confidence=conf,
                 ))
                 stats["relations"] += 1
-
-        # 5. Source 标记（分析报告入口，与 UAP 种子共用「本地分析」）
-        src = (await db.execute(select(Source).where(Source.name == "本地分析"))).scalar_one_or_none()
-        if src is None:
-            db.add(Source(id=_new_id("SRC"), name="本地分析", type="analysis", url="local",
-                          credibility_tier=2, status="active", config={"category": "research_report"}))
 
         await db.commit()
 
