@@ -67,6 +67,18 @@ class AbstractSource(ABC):
                 continue
         return results
 
+    async def update_record_config(self, patch: dict[str, Any]) -> None:
+        """合并更新数据源 config（用于 ETag/增量游标等抓取元数据）。"""
+        from sqlalchemy import select
+        from ..db import async_session
+
+        async with async_session() as db:
+            result = await db.execute(select(Source).where(Source.id == self.source_id))
+            record = result.scalar_one_or_none()
+            if record:
+                record.config = {**(record.config or {}), **patch}
+                await db.commit()
+
     async def health_check(self) -> dict[str, Any]:
         """数据源健康检查。子类可覆写。"""
         return {"source_id": self.source_id, "name": self.source_name, "status": "ok"}

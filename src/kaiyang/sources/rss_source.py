@@ -2,11 +2,18 @@
 
 基于 feedparser 解析 RSS/Atom Feed。
 支持标准 RSS 2.0 和 Atom 格式。
+
+P0 增强:
+  - asyncio.to_thread 异步抓取（不阻塞事件循环）+ 30s 超时
+  - 自定义 User-Agent（部分站点默认拒绝无 UA 请求）
+  - ETag / Last-Modified 条件请求（304 未更新直接跳过）
+  - 语言自动检测（zh/en），不再硬编码 zh
 """
 
 from __future__ import annotations
 
-import hashlib
+import asyncio
+import re
 from datetime import datetime, timezone
 from typing import Any
 
@@ -14,6 +21,17 @@ import feedparser
 
 from .base import AbstractSource
 from ..models import IntelItem
+
+# feedparser 请求 UA（部分站点无 UA 会拒绝服务）
+USER_AGENT = "kaiyang-osint/0.1.0 (https://gitee.com/jiojio21/kaiyang)"
+
+_CJK_RE = re.compile(r"[\u4e00-\u9fff]")
+
+
+def detect_language(title: str = "", content: str = "") -> str:
+    """按 CJK 字符数判断语言。≥2 个中文字符 → zh，否则 en。"""
+    text = f"{title or ''} {content or ''}"
+    return "zh" if len(_CJK_RE.findall(text)) >= 2 else "en"
 
 
 class RSSSource(AbstractSource):
@@ -26,20 +44,36 @@ class RSSSource(AbstractSource):
     """
 
     async def _fetch(self) -> list[dict[str, Any]]:
-        """使用 feedparser 抓取 RSS Feed。
-
-        feedparser 是同步库，但 RSS feed 通常很小（<1MB），
-        阻塞时间可忽略。如有性能需求再切换 httpx + 异步解析。
-        """
+        """异步抓取 RSS Feed（to_thread + 超时 + 条件请求）。"""
         url = self._record.url
         if not url:
             return []
 
-        feed = feedparser.parse(url)
+        cfg = self._record.config or {}
+        etag = cfg.get("etag")
+        modified = cfg.get("modified")
+
+        def _sync_parse():
+            return feedparser.parse(url, agent=USER_AGENT, etag=etag, modified=modified)
+
+        try:
+            feed = await asyncio.wait_for(asyncio.to_thread(_sync_parse), timeout=30.0)
+        except asyncio.TimeoutError as exc:
+            # TimeoutError 在 retry.RETRYABLE 中，会触发上层重试
+            raise TimeoutError(f"RSS fetch timeout for {url}") from exc
+
+        # 304 Not Modified —— 内容未更新，直接跳过
+        if getattr(feed, "status", 200) == 304:
+            return []
 
         if feed.bozo and not feed.entries:
-            # 解析失败且无条目
             raise ValueError(f"RSS parse error for {url}: {feed.bozo_exception}")
+
+        # 持久化 ETag / Last-Modified，下次条件请求
+        new_etag = feed.get("etag") or etag
+        new_modified = feed.get("modified") or modified
+        if new_etag != etag or new_modified != modified:
+            await self.update_record_config({"etag": new_etag, "modified": new_modified})
 
         return [
             {
@@ -75,16 +109,17 @@ class RSSSource(AbstractSource):
         published_str = published.isoformat() if published else ""
 
         item_id = self._make_item_id(link, published_str)
+        content = self._clean_html(raw_item.get("summary", ""))
 
         return IntelItem(
             id=item_id,
             source_id=self.source_id,
             title=title,
-            content=self._clean_html(raw_item.get("summary", "")),
+            content=content,
             url=link,
             published_at=published or datetime.now(timezone.utc),
             fetched_at=datetime.now(timezone.utc),
-            language="zh",
+            language=detect_language(title, content),
             lat=None,
             lng=None,
             country_code=None,
@@ -97,7 +132,6 @@ class RSSSource(AbstractSource):
     @staticmethod
     def _clean_html(text: str) -> str:
         """移除 HTML 标签，保留纯文本。"""
-        import re
         clean = re.sub(r"<[^>]+>", "", text)
         clean = re.sub(r"\s+", " ", clean)
         return clean.strip()[:2000]

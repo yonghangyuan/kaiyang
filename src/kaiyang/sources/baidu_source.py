@@ -14,10 +14,11 @@ from ..models import IntelItem
 class BaiduNewsSource(AbstractSource):
     """百度新闻搜索源——直接抓 HTML 解析。"""
 
-    # 使用多个搜索引擎回退
-    SEARCH_URLS = [
-        ("https://news.sogou.com/news", {"query": "keyword", "mode": 1, "sort": 1}),
-        ("https://www.baidu.com/s", {"wd": "keyword", "tn": "news", "rtt": 1}),
+    # 多引擎回退: (引擎名, URL, 参数模板)，参数值为 "word" 的会被替换为关键词。
+    # P0 修复: 原实现把整个列表当 URL 传给 httpx → TypeError → 源静默失效。
+    SEARCH_ENGINES: list[tuple[str, str, dict[str, str]]] = [
+        ("sogou", "https://news.sogou.com/news", {"query": "word", "mode": "1", "sort": "1", "page": "1"}),
+        ("baidu", "https://www.baidu.com/s", {"wd": "word", "tn": "news", "rtt": "1"}),
     ]
 
     async def _fetch(self) -> list[dict[str, Any]]:
@@ -27,20 +28,24 @@ class BaiduNewsSource(AbstractSource):
             keywords = ["国际", "台海", "中东", "军事", "外交"]
 
         results: list[dict] = []
-        headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-                   "Accept": "text/html,application/xhtml+xml"}
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            "Accept-Language": "zh-CN,zh;q=0.9",
+        }
         async with httpx.AsyncClient(timeout=15, headers=headers, follow_redirects=True) as client:
             for kw in keywords[:5]:
-                try:
-                    resp = await client.get(self.SEARCH_URL, params={
-                        "word": kw, "pn": 0, "tn": "news", "from": "news", "cl": 2,
-                        "rtt": 1,  # 最新
-                    })
-                    if resp.status_code == 200:
-                        items = self._parse_html(resp.text)
-                        results.extend(items)
-                except Exception:
-                    continue
+                for _engine, engine_url, param_tpl in self.SEARCH_ENGINES:
+                    try:
+                        params = {k: (kw if v == "word" else v) for k, v in param_tpl.items()}
+                        resp = await client.get(engine_url, params=params)
+                        if resp.status_code == 200:
+                            items = self._parse_html(resp.text)
+                            if items:
+                                results.extend(items)
+                                break  # 该关键词已有结果，换下一个关键词
+                    except Exception:
+                        continue
         return results[:50]
 
     def _parse_html(self, html: str) -> list[dict]:
