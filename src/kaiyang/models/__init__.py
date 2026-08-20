@@ -119,6 +119,14 @@ class Event(Base):
     confidence = Column(Float, default=0.5)
     source_items = Column(JSON, default=list)  # JSON 数组适配 SQLite
     created_at = Column(DateTime(timezone=True), default=_utcnow)
+    # ── 事件身份层 (2026-08-20, 对标 WorldMonitor story-identity) ──
+    # dedupe_key: 同一事件跨聚合轮次的稳定身份 = 簇内最早成员归一化标题 sha256 前16位。
+    # 聚合时先查 dedupe_key——命中则合并 source_items 更新既有事件，不再新建。
+    dedupe_key = Column(String(32), index=True)
+    # corroboration_count: 簇内独立信源数（佐证强度，区别于条目总数）
+    corroboration_count = Column(Integer, default=0)
+    # importance: 综合重要性 0-100 = severity×0.55 + tier×0.2 + corroboration×0.15 + recency×0.1
+    importance = Column(Integer)
 
     def __repr__(self) -> str:
         t = self.title or ""

@@ -49,16 +49,31 @@ async def get_db() -> AsyncSession:
 
 
 async def init_db() -> None:
-    """创建所有表 + FTS5 全文索引（幂等）。"""
+    """创建所有表 + FTS5 全文索引 + 轻量列迁移（幂等）。"""
+    from sqlalchemy import text
+
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
         # FTS5 虚拟表（SQLite 原生全文搜索）
         if settings.using_sqlite:
-            await conn.execute(__import__('sqlalchemy').text(
+            await conn.execute(text(
                 "CREATE VIRTUAL TABLE IF NOT EXISTS intel_fts USING fts5("
                 "  title, content, tokenize='unicode61'"
                 ")"
             ))
+        # 轻量迁移: 事件身份层列 (2026-08-20)。SQLite 无 IF NOT EXISTS for column，
+        # 捕获 DuplicateColumn 跳过。
+        if settings.using_sqlite:
+            for ddl in (
+                "ALTER TABLE events ADD COLUMN dedupe_key VARCHAR(32)",
+                "CREATE INDEX IF NOT EXISTS ix_events_dedupe_key ON events (dedupe_key)",
+                "ALTER TABLE events ADD COLUMN corroboration_count INTEGER DEFAULT 0",
+                "ALTER TABLE events ADD COLUMN importance INTEGER",
+            ):
+                try:
+                    await conn.execute(text(ddl))
+                except Exception:  # DuplicateColumn / index exists
+                    pass
 
 
 async def close_db() -> None:

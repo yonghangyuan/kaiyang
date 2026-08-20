@@ -2,21 +2,63 @@
 
 将分散的 intel_items 聚类为去重的 Events。
 方法: jieba 关键词 → TF-IDF 向量 → 余弦相似度 → 24h 窗口内聚类。
+
+事件身份层 (2026-08-20, 对标 WorldMonitor story-identity/dedupeKey):
+  同一事件跨聚合轮次保持稳定身份——dedupe_key = 簇内最早成员
+  归一化标题的 sha256 前 16 位。聚合先查 dedupe_key：命中则把新
+  条目合并进既有事件（source_items 并集 + corroboration 更新），
+  不再新建。importance 综合 severity/tier/佐证/recency。
 """
 
 from __future__ import annotations
 
+import hashlib
 import math
 import re
 from collections import Counter, defaultdict
 from datetime import datetime, timedelta, timezone
-from typing import NamedTuple
 
 import jieba
 
 from ..db import async_session
 from ..models import Event, IntelItem, _new_id, _utcnow
 from .scoring import score_event_importance
+
+
+# ── 事件身份: 归一化标题 → dedupe_key ──────────────────────────
+
+_NON_WORD_RE = re.compile(r"[^\w一-鿿]+")
+
+
+def normalize_title(title: str) -> str:
+    """标题归一化: 小写 → 去非文字字符 → 压空白 → 截 120 字符。"""
+    t = (title or "").strip().lower()
+    t = _NON_WORD_RE.sub(" ", t)
+    t = " ".join(t.split())
+    return t[:120]
+
+
+def make_dedupe_key(title: str) -> str:
+    """dedupe_key = 归一化标题 sha256 前 16 位（32 hex 字符的一半，够防撞）。"""
+    return hashlib.sha256(normalize_title(title).encode("utf-8")).hexdigest()[:16]
+
+
+# importance 权重（对标 WM list-feed-digest severity0.55/tier0.2/corro0.15/recency0.1）
+# tier 通道待信源分层表人工标注后接入，当前权重并入 severity。
+_IMP_W_SEVERITY = 0.7
+_IMP_W_CORRO = 0.2
+_IMP_W_RECENCY = 0.1
+
+
+def _compute_importance(severity: int, corroboration: int, time_start_ts: float) -> int:
+    """综合重要性 0-100。"""
+    sev_score = min(severity, 10) / 10 * 100
+    corro_score = min(corroboration, 5) / 5 * 100
+    age_h = max(0.0, (datetime.now(timezone.utc).timestamp() - time_start_ts) / 3600)
+    recency_score = max(0.0, 1 - age_h / 24) * 100
+    raw = (sev_score * _IMP_W_SEVERITY + corro_score * _IMP_W_CORRO
+           + recency_score * _IMP_W_RECENCY)
+    return int(round(raw))
 
 
 # ── 关键词提取 ─────────────────────────────────────────────────
@@ -185,14 +227,18 @@ async def aggregate_events(limit: int = 200) -> dict:
         # 过滤单元素聚类
         multi_clusters = {k: v for k, v in clusters.items() if len(v) >= 2}
 
-        # 为每个聚类创建 Event
+        # 为每个聚类创建/合并 Event
         events_created = 0
+        events_merged = 0
         items_clustered = 0
         new_events: list[dict] = []  # 供实时推送
 
-        # 收集已有事件标题用于去重
-        existing_events = await db.execute(select(Event.title))
-        existing_titles = set(e[0] for e in existing_events if e[0])
+        # 既有 dedupe_key → Event 映射（本窗口内一次查全，内存命中）
+        existing_by_key: dict[str, Event] = {}
+        existing_rows = (await db.execute(
+            select(Event).where(Event.dedupe_key.isnot(None)))).scalars().all()
+        for e in existing_rows:
+            existing_by_key[e.dedupe_key] = e
 
         for indices in multi_clusters.values():
             cluster_items = [items[i] for i in indices]
@@ -203,14 +249,35 @@ async def aggregate_events(limit: int = 200) -> dict:
             # 选取标题（最长的）
             best_item = max(cluster_items, key=lambda x: len(x.title or ""))
 
-            # 去重：跳过已有相似标题的事件
-            if best_item.title and best_item.title.strip() in existing_titles:
-                continue
+            # 事件身份: 最早成员（cluster_items[0]）的归一化标题哈希
+            anchor = cluster_items[0]
+            dedupe_key = make_dedupe_key(anchor.title or best_item.title or "")
+
+            # 佐证计数: 簇内独立信源数
+            corroboration = len({i.source_id for i in cluster_items})
 
             # 提取国家/事件类型
             country = _extract_country(
                 " ".join(i.title or "" for i in cluster_items)
             )
+
+            existing = existing_by_key.get(dedupe_key)
+            if existing is not None:
+                # 同一事件的新一轮报道 → 合并（不新建）
+                merged_ids = set(existing.source_items or []) | {i.id for i in cluster_items}
+                existing.source_items = sorted(merged_ids)
+                existing.time_end = cluster_items[-1].published_at or existing.time_end
+                existing.corroboration_count = max(existing.corroboration_count or 0, corroboration)
+                existing.confidence = min(
+                    (existing.corroboration_count or 1) / ((existing.corroboration_count or 1) + 1) + 0.1 * (corroboration - 1),
+                    0.95,
+                )
+                existing.importance = _compute_importance(
+                    existing.severity or 1, corroboration,
+                    (existing.time_start or _utcnow()).timestamp())
+                events_merged += 1
+                items_clustered += len(cluster_items)
+                continue
 
             event = Event(
                 id=_new_id("EV"),
@@ -224,11 +291,17 @@ async def aggregate_events(limit: int = 200) -> dict:
                 time_end=cluster_items[-1].published_at or _utcnow(),
                 source_items=[i.id for i in cluster_items],
                 created_at=_utcnow(),
+                dedupe_key=dedupe_key,
+                corroboration_count=corroboration,
             )
             event.severity = score_event_importance(event)
             event.confidence = min(len(cluster_items) / (len(cluster_items) + 1), 0.95)
+            event.importance = _compute_importance(
+                event.severity, corroboration,
+                (event.time_start or _utcnow()).timestamp())
             db.add(event)
             await db.flush()  # 拿 id 供推送
+            existing_by_key[dedupe_key] = event
             events_created += 1
             items_clustered += len(cluster_items)
             new_events.append({
@@ -239,7 +312,7 @@ async def aggregate_events(limit: int = 200) -> dict:
                 "lat": event.lat,
                 "lng": event.lng,
                 "time_start": event.time_start.isoformat() if event.time_start else None,
-                "sources": len({i.source_id for i in cluster_items}),
+                "sources": corroboration,
                 "items": len(cluster_items),
             })
 
@@ -248,6 +321,7 @@ async def aggregate_events(limit: int = 200) -> dict:
     return {
         "clusters_found": len(multi_clusters),
         "events_created": events_created,
+        "events_merged": events_merged,
         "items_clustered": items_clustered,
         "total_items": len(items),
         "threshold": SIMILARITY_THRESHOLD,
