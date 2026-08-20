@@ -20,6 +20,12 @@ export default function App() {
   const [chain, setChain] = useState<any>(null)
   const [topicLayers, setTopicLayers] = useState<{issue_id:string;name:string;category?:string;events?:number;mappable_events?:number}[]>([])
   const [activeTopics, setActiveTopics] = useState<string[]>([])
+  const [latestIntel, setLatestIntel] = useState<{id:string;title:string;published_at?:string;source:string;country_code?:string;url?:string}[]>([])
+
+  const loadLatestIntel = async () => {
+    try { const d = await fetch('/api/intel/latest?limit=30').then(r => r.json()); setLatestIntel(d.items||[]) } catch {}
+  }
+  useEffect(() => { loadLatestIntel(); const t = setInterval(loadLatestIntel, 60000); return () => clearInterval(t) }, [])
 
   const loadTopicLayers = async () => {
     try { const d = await fetch('/api/map/layers').then(r => r.json()); setTopicLayers(d.topic_layers||[]) } catch {}
@@ -53,7 +59,7 @@ export default function App() {
         }
         if (d.type === 'fetch_complete' && d.new_items > 0) {
           setStatus(`新增: ${d.new_items} 条`)
-          loadEvents(); loadStats()
+          loadEvents(); loadStats(); loadLatestIntel()
           // 浏览器通知
           if (d.level === 'warning' && (Notification as any).permission === 'granted') {
             new Notification('开阳 情报更新', { body: d.body, icon: '/favicon.svg' })
@@ -92,23 +98,14 @@ export default function App() {
 
   const clearAnnotations = () => { api.annotations.clear(); loadAnnotations() }
 
-  // Build ticker items from events + search results (more real-time)
-  const tickerItems = [
-    ...events.slice(0, 20).map(e => ({
-      title: (e.title||'').substring(0,80),
-      country: e.country_code||'',
-      severity: e.severity||1,
-      time: (e.time_start||e.published_at||'').substring(11,16),
-      type: 'event' as const,
-    })),
-    ...searchResults.slice(0, 10).map(e => ({
-      title: (e.title||'').substring(0,80),
-      country: e.country_code||'',
-      severity: 1,
-      time: (e.published_at||e.time_start||'').substring(11,16),
-      type: 'search' as const,
-    })),
-  ].sort((a,b) => b.time.localeCompare(a.time)).slice(0, 30)
+  // Ticker: 最新情报流（不再复用地图事件——那个按 severity 排序，老事件会霸屏）
+  const tickerItems = latestIntel.map(e => ({
+    title: (e.title||'').substring(0,90),
+    country: e.country_code||'',
+    source: (e.source||'').substring(0,12),
+    time: (e.published_at||'').substring(11,16),
+    url: e.url,
+  }))
 
   return (
     <div style={{display:'flex',flexDirection:'column',height:'100vh',position:'relative',zIndex:1}}>
@@ -140,12 +137,11 @@ export default function App() {
           <div className="ticker-content">
             <span className="ticker-label"><span className="live-dot" style={{width:6,height:6}} />LIVE</span>
             {[...tickerItems, ...tickerItems].map((t, i) => {
-              const c = t.severity >= 7 ? 'var(--red)' : t.severity >= 5 ? 'var(--orange)' : t.severity >= 3 ? 'var(--yellow)' : 'var(--green)'
               return <span key={i} className="ticker-item">
-                <span className="dot" style={{background:c}} />
+                <span className="dot" style={{background:'var(--green)'}} />
                 <span style={{color:'var(--fg-dim)',opacity:0.5}}>{t.time}</span>
                 <span style={{color:'var(--fg)'}}>{t.title}</span>
-                {t.country && <span style={{color:c,fontSize:10}}>[{t.country}]</span>}
+                <span style={{color:'var(--fg-dim)',fontSize:10,opacity:0.7}}>{t.source}</span>
               </span>
             })}
           </div>

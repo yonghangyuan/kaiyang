@@ -58,6 +58,48 @@ async def list_intel(
     }
 
 
+@router.get("/intel/latest")
+async def latest_intel(
+    limit: int = Query(30, ge=1, le=100),
+):
+    """Ticker 专用：最新情报流（按发布时间倒序）。
+
+    与 /api/intel 的区别：带信源名与语言，过滤分析报告类静态条目
+    （本地分析/专题简报不是新闻，不该上滚动条）。
+    """
+    from ..models import Source
+
+    async with async_session() as db:
+        result = await db.execute(
+            select(IntelItem, Source.name)
+            .join(Source, IntelItem.source_id == Source.id)
+            .where(
+                IntelItem.published_at.isnot(None),
+                # 排除分析报告/专题简报类（非新闻）
+                ~Source.type.in_(("analysis",)),
+            )
+            .order_by(IntelItem.published_at.desc())
+            .limit(limit)
+        )
+        rows = result.all()
+
+    return {
+        "count": len(rows),
+        "items": [
+            {
+                "id": it.id,
+                "title": it.title,
+                "url": it.url,
+                "published_at": it.published_at.isoformat() if it.published_at else None,
+                "source": src_name,
+                "country_code": it.country_code,
+                "language": it.language,
+            }
+            for it, src_name in rows
+        ],
+    }
+
+
 class IntelSearchRequest(BaseModel):
     keyword: str = ""
     limit: int = 20
