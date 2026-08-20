@@ -71,6 +71,15 @@ async def _seed_default_sources():
         {"name": "DW World", "type": "rss", "url": "https://rss.dw.com/rdf/rss-en-world", "credibility_tier": 2},
         {"name": "France24", "type": "rss", "url": "https://www.france24.com/en/rss", "credibility_tier": 2},
         {"name": "百度新闻·欧洲风险", "type": "baidu", "url": "baidu", "credibility_tier": 2, "config": {"keywords": "欧洲经济,德国工业,AfD,勒庞,法国大选,霍尔木兹,欧盟防务"}},
+        # Tier 2 — AI 浪潮监测（信源协议, 2026-08-20, analysis/ai-wave-monitor.md）
+        {"name": "量子位", "type": "rss", "url": "https://www.qbitai.com/feed", "credibility_tier": 2},
+        {"name": "MIT TR AI", "type": "rss", "url": "https://www.technologyreview.com/topic/artificial-intelligence/feed", "credibility_tier": 2},
+        {"name": "TechCrunch AI", "type": "rss", "url": "https://techcrunch.com/category/artificial-intelligence/feed/", "credibility_tier": 2},
+        {"name": "VentureBeat AI", "type": "rss", "url": "https://venturebeat.com/category/ai/feed/", "credibility_tier": 2},
+        {"name": "The Verge AI", "type": "rss", "url": "https://www.theverge.com/rss/ai-artificial-intelligence/index.xml", "credibility_tier": 2},
+        {"name": "百度新闻·AI算力政策", "type": "baidu", "url": "baidu", "credibility_tier": 2, "config": {"keywords": "东数西算,算力基础设施,公共算力,智算中心"}},
+        {"name": "百度新闻·AI税与自动化税", "type": "baidu", "url": "baidu", "credibility_tier": 2, "config": {"keywords": "AI税,自动化税,机器人税,人工智能立法"}},
+        {"name": "百度新闻·AI治理与算法管理", "type": "baidu", "url": "baidu", "credibility_tier": 2, "config": {"keywords": "AI治理,算法管理,算法备案,深度合成监管"}},
     ]
 
     async with async_session() as db:
