@@ -42,8 +42,9 @@ class USGSSource(AbstractSource):
                 resp.raise_for_status()
                 data = resp.json()
                 return data.get("features", [])[:50]
-        except Exception:
-            return []
+        except Exception as exc:
+            # 上抛让 source_health 记账（指数退避），不静默归零
+            raise RuntimeError(f"USGS fetch failed: {exc}") from exc
 
     def _parse(self, raw_item: dict[str, Any]) -> IntelItem | None:
         props = raw_item.get("properties", {})

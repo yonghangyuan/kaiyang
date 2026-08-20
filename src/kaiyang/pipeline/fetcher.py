@@ -165,6 +165,13 @@ class IntelFetcher:
             agg_result = await aggregate_events(limit=100)
             self._stats["events_created"] = agg_result["events_created"]
             self._stats["items_clustered"] = agg_result["items_clustered"]
+            # 实时推送每个新事件（前端 LIVE 流 + 地图落点）
+            for ev in agg_result.get("new_events", []):
+                await self._broadcast({
+                    "type": "new_event",
+                    "level": "warning" if ev.get("severity", 0) >= 7 else "info",
+                    **ev,
+                })
         except Exception:
             self._stats["events_created"] = 0
 

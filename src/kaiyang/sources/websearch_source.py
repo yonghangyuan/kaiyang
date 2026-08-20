@@ -24,12 +24,18 @@ class WebSearchSource(AbstractSource):
         keywords = [k.strip() for k in keywords_str.split(",") if k.strip()]
 
         results: list[dict] = []
+        errors: list[str] = []
         for kw in keywords[:5]:
             try:
                 items = await self._search_keyword(kw)
                 results.extend(items)
-            except Exception:
+            except Exception as exc:
+                errors.append(f"{kw}: {exc}")
                 continue
+
+        # 全部关键词失败 → 上抛（source_health 记账）；部分失败容忍
+        if not results and errors:
+            raise RuntimeError(f"websearch all keywords failed: {'; '.join(errors[:2])}")
 
         return results[:50]
 

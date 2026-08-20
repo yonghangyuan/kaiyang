@@ -121,7 +121,7 @@ TIME_WINDOW_HOURS = 24       # 时间窗口
 async def aggregate_events(limit: int = 200) -> dict:
     """主聚合函数：将最近的 intel_items 聚类为 Events。
 
-    返回: {clusters_found, events_created, items_clustered}
+    返回: {clusters_found, events_created, items_clustered, new_events}
     """
     cutoff = datetime.now(timezone.utc) - timedelta(hours=TIME_WINDOW_HOURS)
 
@@ -188,6 +188,7 @@ async def aggregate_events(limit: int = 200) -> dict:
         # 为每个聚类创建 Event
         events_created = 0
         items_clustered = 0
+        new_events: list[dict] = []  # 供实时推送
 
         # 收集已有事件标题用于去重
         existing_events = await db.execute(select(Event.title))
@@ -227,8 +228,20 @@ async def aggregate_events(limit: int = 200) -> dict:
             event.severity = score_event_importance(event)
             event.confidence = min(len(cluster_items) / (len(cluster_items) + 1), 0.95)
             db.add(event)
+            await db.flush()  # 拿 id 供推送
             events_created += 1
             items_clustered += len(cluster_items)
+            new_events.append({
+                "id": event.id,
+                "title": event.title,
+                "severity": event.severity,
+                "country_code": event.country_code,
+                "lat": event.lat,
+                "lng": event.lng,
+                "time_start": event.time_start.isoformat() if event.time_start else None,
+                "sources": len({i.source_id for i in cluster_items}),
+                "items": len(cluster_items),
+            })
 
         await db.commit()
 
@@ -239,4 +252,5 @@ async def aggregate_events(limit: int = 200) -> dict:
         "total_items": len(items),
         "threshold": SIMILARITY_THRESHOLD,
         "window_hours": TIME_WINDOW_HOURS,
+        "new_events": new_events,
     }
