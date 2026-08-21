@@ -52,6 +52,12 @@ export default function LiveFeed({ onSelectCountry, onSelectEntity, onFlyTo }: P
 
   const aiClass = (item: FeedItem) => item.raw_data?.ai_classification
 
+  // 国家码显示名（ISO 3166 是技术编码；显示层按规范处理地区标注）
+  const COUNTRY_LABEL: Record<string, string> = {
+    TW: '中国台湾', HK: '中国香港', MO: '中国澳门',
+  }
+  const countryLabel = (c: string) => COUNTRY_LABEL[c] || c
+
   return (
     <div style={{fontSize:12}}>
       <div style={{display:'flex',gap:4,marginBottom:8,flexWrap:'wrap'}}>
@@ -78,7 +84,7 @@ export default function LiveFeed({ onSelectCountry, onSelectEntity, onFlyTo }: P
               {item.country_code && (
                 <span onClick={e => { e.stopPropagation(); onSelectCountry?.(item.country_code!) }}
                   style={{fontSize:9,color:'var(--accent)',background:'var(--accent-dim)',padding:'0 4px',borderRadius:2,cursor:'pointer'}}>
-                  {item.country_code}
+                  {countryLabel(item.country_code)}
                 </span>
               )}
               {cls && (

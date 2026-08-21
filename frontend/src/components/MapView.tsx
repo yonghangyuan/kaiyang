@@ -22,12 +22,12 @@ export default function MapView({ events, searchResults, annotations, chain, fly
     const map = L.map('map-container').setView([35, 105], 4)
 
     const baseTiles: Record<string, L.TileLayer> = {
-      'CartoDB': L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', { subdomains: 'abcd', maxZoom: 19 }),
-      'Amap': L.tileLayer('https://webst0{s}.is.autonavi.com/appmaptile?style=6&x={x}&y={y}&z={z}', { subdomains: '1234', maxZoom: 18 }),
-      'ESRI': L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { maxZoom: 17 }),
-      'OSM': L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { subdomains: 'abc', maxZoom: 19 }),
+      '高德地图': L.tileLayer('https://webst0{s}.is.autonavi.com/appmaptile?style=6&x={x}&y={y}&z={z}', { subdomains: '1234', maxZoom: 18 }),
+      '卫星影像': L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { maxZoom: 17 }),
+      // 注: CartoDB/OSM 的国界渲染不符合中国地图出版标准（台湾/藏南/阿克赛钦），
+      // 已从底图选项移除 (2026-08-21)。国内场景用高德，全球影像用 ESRI 卫星图（无边界标注）。
     }
-    baseTiles['CartoDB'].addTo(map)
+    baseTiles['高德地图'].addTo(map)
 
     // Create data layer groups
     const overlays: Record<string, L.LayerGroup> = {
@@ -58,10 +58,11 @@ export default function MapView({ events, searchResults, annotations, chain, fly
       if (isNaN(d.getTime())) return iso.substring(0,16)
       return d.toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false })
     }
+    const COUNTRY_LABEL: Record<string, string> = { TW: '中国台湾', HK: '中国香港', MO: '中国澳门' }
     const makePopup = (e: GeoPoint, extra: string) => {
       const sev = e.severity || 1
       let html = `<div style="max-width:300px"><b>${esc(e.title||'')}</b>`
-      html += `<br><small style="color:#64748b">${e.country_code||'?'} | ${fmtLocal(e.time_start || e.published_at)} | imp:${sev}/10`
+      html += `<br><small style="color:#64748b">${COUNTRY_LABEL[e.country_code||''] || e.country_code || '?'} | ${fmtLocal(e.time_start || e.published_at)} | imp:${sev}/10`
       if (e.source_count) html += ` | ${e.source_count}sources`
       html += `</small>${extra}`
       html += `<br><a href="#" onclick="event.preventDefault();window.loadEventItems('${e.id}')" style="font-size:11px">查看报道</a>`
