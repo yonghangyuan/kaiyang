@@ -29,7 +29,11 @@ export default function LiveFeed({ onSelectCountry, onSelectEntity, onFlyTo }: P
   useEffect(() => { load(true) }, [filter])
 
   const timeAgo = (ts: string) => {
-    const diff = Date.now() - new Date(ts).getTime()
+    // 后端给 UTC ISO 串——无 T 的补 Z 再解析，否则被当本地时间差 8 小时
+    const t = new Date(ts.includes('T') ? ts : ts.replace(' ', 'T') + 'Z')
+    if (isNaN(t.getTime())) return '?'
+    const diff = Date.now() - t.getTime()
+    if (diff < 0) return 'now'
     const mins = Math.floor(diff / 60000)
     if (mins < 60) return `${mins}m`
     const hrs = Math.floor(mins / 60)

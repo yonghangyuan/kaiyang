@@ -99,11 +99,18 @@ export default function App() {
   const clearAnnotations = () => { api.annotations.clear(); loadAnnotations() }
 
   // Ticker: 最新情报流（不再复用地图事件——那个按 severity 排序，老事件会霸屏）
+  // published_at 是 UTC ISO 串——解析后转本地时间显示
+  const fmtTime = (iso?: string) => {
+    if (!iso) return ''
+    const d = new Date(iso.includes('T') ? iso : iso.replace(' ', 'T') + 'Z')
+    if (isNaN(d.getTime())) return iso.substring(11,16)
+    return d.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', hour12: false })
+  }
   const tickerItems = latestIntel.map(e => ({
     title: (e.title||'').substring(0,90),
     country: e.country_code||'',
     source: (e.source||'').substring(0,12),
-    time: (e.published_at||'').substring(11,16),
+    time: fmtTime(e.published_at),
     url: e.url,
   }))
 

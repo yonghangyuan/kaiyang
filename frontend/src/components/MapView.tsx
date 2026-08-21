@@ -52,11 +52,16 @@ export default function MapView({ events, searchResults, annotations, chain, fly
     const esc = (s: string) => String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;')
 
     // Popup helper — uses global functions to avoid inline JS complexity
+    const fmtLocal = (iso?: string) => {
+      if (!iso) return ''
+      const d = new Date(iso.includes('T') ? iso : iso.replace(' ', 'T') + 'Z')
+      if (isNaN(d.getTime())) return iso.substring(0,16)
+      return d.toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false })
+    }
     const makePopup = (e: GeoPoint, extra: string) => {
       const sev = e.severity || 1
-      const time = e.time_start || e.published_at || ''
       let html = `<div style="max-width:300px"><b>${esc(e.title||'')}</b>`
-      html += `<br><small style="color:#64748b">${e.country_code||'?'} | ${time.substring(0,16)} | imp:${sev}/10`
+      html += `<br><small style="color:#64748b">${e.country_code||'?'} | ${fmtLocal(e.time_start || e.published_at)} | imp:${sev}/10`
       if (e.source_count) html += ` | ${e.source_count}sources`
       html += `</small>${extra}`
       html += `<br><a href="#" onclick="event.preventDefault();window.loadEventItems('${e.id}')" style="font-size:11px">查看报道</a>`
