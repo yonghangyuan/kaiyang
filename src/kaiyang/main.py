@@ -46,15 +46,19 @@ async def _seed_default_sources():
         {"name": "CGTN Tech", "type": "rss", "url": "https://www.cgtn.com/subscribe/rss/section/tech-sci.xml", "credibility_tier": 1},
         {"name": "CGTN Opinion", "type": "rss", "url": "https://www.cgtn.com/subscribe/rss/section/opinion.xml", "credibility_tier": 2},
         # Tier 1 — China Daily 系列
-        {"name": "China Daily World", "type": "rss", "url": "http://www.chinadaily.com.cn/rss/world_rss.xml", "credibility_tier": 1},
-        {"name": "China Daily China", "type": "rss", "url": "http://www.chinadaily.com.cn/rss/china_rss.xml", "credibility_tier": 1},
-        {"name": "China Daily Opinion", "type": "rss", "url": "http://www.chinadaily.com.cn/rss/opinion_rss.xml", "credibility_tier": 2},
-        {"name": "China Daily Business", "type": "rss", "url": "http://www.chinadaily.com.cn/rss/bizchina_rss.xml", "credibility_tier": 1},
+        {"name": "China Daily World", "type": "rss", "url": "http://www.chinadaily.com.cn/rss/world_rss.xml", "credibility_tier": 1, "status": "paused"},  # 2026-08-21: RSS源头2017存档
+        {"name": "China Daily China", "type": "rss", "url": "http://www.chinadaily.com.cn/rss/china_rss.xml", "credibility_tier": 1, "status": "paused"},
+        {"name": "China Daily Opinion", "type": "rss", "url": "http://www.chinadaily.com.cn/rss/opinion_rss.xml", "credibility_tier": 2, "status": "paused"},
+        {"name": "China Daily Business", "type": "rss", "url": "http://www.chinadaily.com.cn/rss/bizchina_rss.xml", "credibility_tier": 1, "status": "paused"},
         # Tier 1 — 其他中国英文
-        {"name": "Xinhua English", "type": "rss", "url": "http://www.xinhuanet.com/english/rss/worldrss.xml", "credibility_tier": 1},
+        {"name": "Xinhua English", "type": "rss", "url": "http://www.xinhuanet.com/english/rss/worldrss.xml", "credibility_tier": 1, "status": "paused"},  # 2026-08-21: RSS源头2018存档
         {"name": "Ecns.cn", "type": "rss", "url": "http://www.ecns.cn/rss/rss.xml", "credibility_tier": 1},
         # Tier 2 — 中文源
-        {"name": "人民日报", "type": "rss", "url": "http://www.people.com.cn/rss/politics.xml", "credibility_tier": 2},
+        {"name": "人民日报", "type": "rss", "url": "http://www.people.com.cn/rss/politics.xml", "credibility_tier": 2, "status": "paused"},  # 2026-08-21: feed停更14个月只推2025-06存稿
+        # 中文补强 (2026-08-21 全面维修: 搜索引擎类全反爬, 换真实中文RSS)
+        {"name": "爱范儿", "type": "rss", "url": "https://www.ifanr.com/feed", "credibility_tier": 2},
+        {"name": "Solidot", "type": "rss", "url": "https://www.solidot.org/index.rss", "credibility_tier": 2},
+        {"name": "环球时报英文", "type": "rss", "url": "https://www.globaltimes.cn/rss/outbrain.xml", "credibility_tier": 2},
         # Tier 1 — 国际通讯社 (国内可访问)
         {"name": "TASS", "type": "rss", "url": "https://tass.com/rss/v2.xml", "credibility_tier": 1},
         # Tier 1 — 实时API

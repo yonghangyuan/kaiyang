@@ -52,7 +52,9 @@ class GDELTSource(AbstractSource):
         global _last_request_ts
 
         params = {
-            "query": "world",
+            # 地缘情报定向（原 'world' 太宽：快餐meme/游戏八卦/多语种垃圾全进来）
+            "query": "(conflict OR military OR sanctions OR missile OR strike OR "
+                     "nuclear OR summit OR ceasefire OR blockade)",
             "mode": "ArtList",
             "format": "json",
             "timespan": "1h",

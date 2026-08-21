@@ -73,26 +73,40 @@ async def latest_intel(
     """
     from ..models import Source
 
+    # 候选池按源配额拉取（窗口函数 row_number）——不能用全局 limit 截断：
+    # GDELT 一批 50 条会霸占整个时间窗口，其他源根本进不了候选池，
+    # 轮转就退化成单源。
+    from sqlalchemy import func as sa_func
+
+    rn = (
+        select(
+            IntelItem.id.label("iid"),
+            sa_func.row_number().over(
+                partition_by=IntelItem.source_id,
+                order_by=IntelItem.published_at.desc(),
+            ).label("rn"),
+        )
+        .where(IntelItem.published_at.isnot(None))
+        .subquery()
+    )
+
     async with async_session() as db:
         result = await db.execute(
             select(IntelItem, Source.name)
+            .join(rn, IntelItem.id == rn.c.iid)
             .join(Source, IntelItem.source_id == Source.id)
             .where(
-                IntelItem.published_at.isnot(None),
-                # 排除分析报告/专题简报类（非新闻）
+                rn.c.rn <= per_source,  # 每源最多 per_source 条进候选
                 ~Source.type.in_(("analysis",)),
             )
             .order_by(IntelItem.published_at.desc())
-            .limit(limit * 3)  # 多取一些供轮转
         )
         rows = result.all()
 
-    # 按源分桶（保持时间倒序）
+    # 按源分桶（保持时间倒序，每桶已 ≤ per_source）
     by_source: dict[str, list] = {}
     for it, src_name in rows:
-        by_source.setdefault(src_name, [])
-        if len(by_source[src_name]) < per_source:
-            by_source[src_name].append((it, src_name))
+        by_source.setdefault(src_name, []).append((it, src_name))
 
     # 轮转交错: 每轮从各源各取一条（桶序按各源最新条目时间排）
     sources = sorted(by_source, key=lambda s: by_source[s][0][0].published_at, reverse=True)

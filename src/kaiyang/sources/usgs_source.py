@@ -25,20 +25,16 @@ class USGSSource(AbstractSource):
         items = await usgs.fetch_and_parse()
     """
 
-    API_URL = "https://earthquake.usgs.gov/fdsnws/event/1/query"
+    # 2026-08-21 修复: 原 query API 用 starttime=今天(UTC零点)——今天还没发生
+    # M4.5+ 时返回 0 条（凌晨大概率空），看起来像源死了。换官方 summary feed
+    # （过去 24h 滚动窗口，永远有内容）。
+    API_URL = "https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/4.5_day.geojson"
 
     async def _fetch(self) -> list[dict[str, Any]]:
-        """拉取最近 24h 全球 ≥M4.5 地震。"""
-        params = {
-            "format": "geojson",
-            "starttime": datetime.now(timezone.utc).strftime("%Y-%m-%d"),
-            "minmagnitude": 4.5,
-            "orderby": "time",
-            "limit": 50,
-        }
+        """拉取最近 24h 全球 ≥M4.5 地震（官方 summary feed，滚动窗口）。"""
         try:
             async with httpx.AsyncClient(timeout=30) as client:
-                resp = await client.get(self.API_URL, params=params)
+                resp = await client.get(self.API_URL)
                 resp.raise_for_status()
                 data = resp.json()
                 return data.get("features", [])[:50]
