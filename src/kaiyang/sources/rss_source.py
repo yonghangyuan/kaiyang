@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import asyncio
 import re
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 import feedparser
@@ -42,6 +42,9 @@ class RSSSource(AbstractSource):
         rss = RSSSource(source_record)
         items = await rss.fetch_and_parse()
     """
+
+    # 存档旧稿拦截窗口（超过即不入库；WorldMonitor 冻结规则同款 30 天）
+    MAX_AGE_DAYS = 30
 
     async def _fetch(self) -> list[dict[str, Any]]:
         """异步抓取 RSS Feed（to_thread + 超时 + 条件请求）。"""
@@ -89,14 +92,35 @@ class RSSSource(AbstractSource):
 
     @staticmethod
     def _parse_published(published_str: str) -> datetime | None:
-        """解析发布时间字符串为 datetime。"""
+        """解析发布时间字符串为 datetime。
+
+        兼容三种形态（人民日报等中文源给纯日期，不喂 RFC822）:
+          - RFC822: 'Thu, 05 Jun 2025 05:29:00 GMT' (parsedate_to_datetime)
+          - ISO 日期: '2025-06-05' / '2025-06-05T05:29:00'
+          - 常见中文格式: '2025年06月05日 05:29'
+        """
         if not published_str:
             return None
+        # 1) RFC822（标准 RSS 日期）
         try:
             from email.utils import parsedate_to_datetime
             return parsedate_to_datetime(published_str)
         except Exception:
-            return None
+            pass
+        # 2) ISO / 纯日期（人民日报: '2025-06-05'）
+        s = published_str.strip()
+        for fmt in ("%Y-%m-%dT%H:%M:%S", "%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M", "%Y-%m-%d"):
+            try:
+                dt = datetime.strptime(s, fmt)
+                return dt.replace(tzinfo=timezone.utc)
+            except ValueError:
+                continue
+        # 3) 中文格式 '2025年06月05日 05:29'
+        cn = re.match(r"(\d{4})年(\d{1,2})月(\d{1,2})日\s*(\d{1,2}):(\d{2})", s)
+        if cn:
+            y, mo, d, h, mi = map(int, cn.groups())
+            return datetime(y, mo, d, h, mi, tzinfo=timezone.utc)
+        return None
 
     def _parse(self, raw_item: dict[str, Any]) -> IntelItem | None:
         """解析 RSS 条目为标准 IntelItem。"""
@@ -106,6 +130,16 @@ class RSSSource(AbstractSource):
             return None
 
         published = self._parse_published(raw_item.get("published", ""))
+
+        # 过期拦截：发布时间可解析且超过 MAX_AGE_DAYS 的存档旧稿不入库
+        # （人民日报 RSS 曾推 14 个月前的旧稿，被 fallback-now 伪装成新鲜新闻）。
+        # 解析不出时间的条目仍走 fallback-now——多数 RSS 都带合法日期，真异常源
+        # 由 source_health 的"静默归零"检测兜底。
+        if published is not None:
+            age = datetime.now(timezone.utc) - published
+            if age > timedelta(days=self.MAX_AGE_DAYS):
+                return None
+
         published_str = published.isoformat() if published else ""
 
         item_id = self._make_item_id(link, published_str)
