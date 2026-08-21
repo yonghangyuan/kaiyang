@@ -61,11 +61,15 @@ async def list_intel(
 @router.get("/intel/latest")
 async def latest_intel(
     limit: int = Query(30, ge=1, le=100),
+    per_source: int = Query(6, ge=1, le=20),
 ):
-    """Ticker 专用：最新情报流（按发布时间倒序）。
+    """Ticker 专用：最新情报流，按源轮换取样（防单源刷屏）。
 
-    与 /api/intel 的区别：带信源名与语言，过滤分析报告类静态条目
-    （本地分析/专题简报不是新闻，不该上滚动条）。
+    与 /api/intel 的区别：
+    - 带信源名与语言，过滤分析报告类静态条目（简报不是新闻）
+    - 均衡策略：先按发布时间倒序取每源头部 per_source 条，再逐源轮流
+      交错输出（A1→B1→C1→A2→B2…）——任何一段滚动都不会被单一高产源
+      （如 TASS）霸屏，中文低产源获得等量露出位。
     """
     from ..models import Source
 
@@ -79,12 +83,33 @@ async def latest_intel(
                 ~Source.type.in_(("analysis",)),
             )
             .order_by(IntelItem.published_at.desc())
-            .limit(limit)
+            .limit(limit * 3)  # 多取一些供轮转
         )
         rows = result.all()
 
+    # 按源分桶（保持时间倒序）
+    by_source: dict[str, list] = {}
+    for it, src_name in rows:
+        by_source.setdefault(src_name, [])
+        if len(by_source[src_name]) < per_source:
+            by_source[src_name].append((it, src_name))
+
+    # 轮转交错: 每轮从各源各取一条（桶序按各源最新条目时间排）
+    sources = sorted(by_source, key=lambda s: by_source[s][0][0].published_at, reverse=True)
+    mixed: list = []
+    round_idx = 0
+    while len(mixed) < limit:
+        took_any = False
+        for s in sources:
+            if round_idx < len(by_source[s]) and len(mixed) < limit:
+                mixed.append(by_source[s][round_idx])
+                took_any = True
+        if not took_any:
+            break
+        round_idx += 1
+
     return {
-        "count": len(rows),
+        "count": len(mixed),
         "items": [
             {
                 "id": it.id,
@@ -95,7 +120,7 @@ async def latest_intel(
                 "country_code": it.country_code,
                 "language": it.language,
             }
-            for it, src_name in rows
+            for it, src_name in mixed
         ],
     }
 
