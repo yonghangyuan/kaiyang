@@ -38,52 +38,50 @@ async def _seed_default_sources():
     from .models import Source, _new_id
 
     defaults = [
-        # Tier 1 — CGTN 系列 (中国官方英文)
+        # ═══ Tier 1 — 官方权威中文（2026-08-25 大清扫后新增，全国仅存的可 RSS 官方源） ═══
+        {"name": "中国军网", "type": "rss", "url": "http://www.81.cn/rss.xml", "credibility_tier": 1},  # 军委政工部主办, 2096条活feed
+        {"name": "中新网滚动", "type": "rss", "url": "https://www.chinanews.com.cn/rss/scroll-news.xml", "credibility_tier": 1},  # 国侨办背景通讯社, 30条滚动
+        # ═══ Tier 1 — CGTN（2026-08-25: 6频道并为2个新鲜频道, 4个半死频道移除） ═══
         {"name": "CGTN World", "type": "rss", "url": "https://www.cgtn.com/subscribe/rss/section/world.xml", "credibility_tier": 1},
-        {"name": "CGTN China", "type": "rss", "url": "https://www.cgtn.com/subscribe/rss/section/china.xml", "credibility_tier": 1},
-        {"name": "CGTN Business", "type": "rss", "url": "https://www.cgtn.com/subscribe/rss/section/business.xml", "credibility_tier": 1},
         {"name": "CGTN Politics", "type": "rss", "url": "https://www.cgtn.com/subscribe/rss/section/politics.xml", "credibility_tier": 1},
-        {"name": "CGTN Tech", "type": "rss", "url": "https://www.cgtn.com/subscribe/rss/section/tech-sci.xml", "credibility_tier": 1},
-        {"name": "CGTN Opinion", "type": "rss", "url": "https://www.cgtn.com/subscribe/rss/section/opinion.xml", "credibility_tier": 2},
-        # Tier 1 — China Daily 系列
-        {"name": "China Daily World", "type": "rss", "url": "http://www.chinadaily.com.cn/rss/world_rss.xml", "credibility_tier": 1, "status": "paused"},  # 2026-08-21: RSS源头2017存档
-        {"name": "China Daily China", "type": "rss", "url": "http://www.chinadaily.com.cn/rss/china_rss.xml", "credibility_tier": 1, "status": "paused"},
-        {"name": "China Daily Opinion", "type": "rss", "url": "http://www.chinadaily.com.cn/rss/opinion_rss.xml", "credibility_tier": 2, "status": "paused"},
-        {"name": "China Daily Business", "type": "rss", "url": "http://www.chinadaily.com.cn/rss/bizchina_rss.xml", "credibility_tier": 1, "status": "paused"},
-        # Tier 1 — 其他中国英文
-        {"name": "Xinhua English", "type": "rss", "url": "http://www.xinhuanet.com/english/rss/worldrss.xml", "credibility_tier": 1, "status": "paused"},  # 2026-08-21: RSS源头2018存档
-        {"name": "Ecns.cn", "type": "rss", "url": "http://www.ecns.cn/rss/rss.xml", "credibility_tier": 1},
-        # Tier 2 — 中文源
-        {"name": "人民日报", "type": "rss", "url": "http://www.people.com.cn/rss/politics.xml", "credibility_tier": 2, "status": "paused"},  # 2026-08-21: feed停更14个月只推2025-06存稿
-        # 中文补强 (2026-08-21 全面维修: 搜索引擎类全反爬, 换真实中文RSS)
+        {"name": "Ecns.cn", "type": "rss", "url": "http://www.ecns.cn/rss/rss.xml", "credibility_tier": 1},  # 中新社英文版, 最能打的源
+        # ═══ Tier 2 — 中文科技/社区 ═══
         {"name": "爱范儿", "type": "rss", "url": "https://www.ifanr.com/feed", "credibility_tier": 2},
         {"name": "Solidot", "type": "rss", "url": "https://www.solidot.org/index.rss", "credibility_tier": 2},
-        {"name": "环球时报英文", "type": "rss", "url": "https://www.globaltimes.cn/rss/outbrain.xml", "credibility_tier": 2},
-        # Tier 1 — 国际通讯社 (国内可访问)
-        {"name": "TASS", "type": "rss", "url": "https://tass.com/rss/v2.xml", "credibility_tier": 1},
-        # Tier 1 — 实时API
+        # ═══ Tier 1 — 实时API ═══
         {"name": "USGS Earthquakes", "type": "usgs", "url": "usgs", "credibility_tier": 1},
         {"name": "GDELT Global", "type": "gdelt", "url": "gdelt", "credibility_tier": 1},
-        {"name": "百度新闻", "type": "baidu", "url": "baidu", "credibility_tier": 2, "config": {"keywords": "国际,台海,中东,军事,外交,朝鲜,南海"}},
-        # Tier 3/4 — 知乎信源（UAP 专题）
-        {"name": "知乎·UAP话题", "type": "zhihu", "url": "zhihu", "credibility_tier": 3, "config": {"keywords": "UAP,不明飞行物,外星人,UFO,飞碟"}},
-        {"name": "知乎·韩真宇", "type": "zhihu", "url": "zhihu", "credibility_tier": 4, "config": {"users": "23she-shi-du", "fallback_keywords": "韩真宇 外星人"}},
-        # Tier 2 — 欧洲风险监测（信源协议, 2026-08-13）
-        {"name": "Politico Europe", "type": "rss", "url": "https://www.politico.eu/feed/", "credibility_tier": 2},
-        {"name": "Euractiv", "type": "rss", "url": "https://www.euractiv.com/feed/", "credibility_tier": 2},
-        {"name": "Euronews", "type": "rss", "url": "https://www.euronews.com/rss?euronews_news=top-stories", "credibility_tier": 2},
-        {"name": "DW World", "type": "rss", "url": "https://rss.dw.com/rdf/rss-en-world", "credibility_tier": 2},
+        # ═══ Tier 2 — 国际（本机可达） ═══
         {"name": "France24", "type": "rss", "url": "https://www.france24.com/en/rss", "credibility_tier": 2},
-        {"name": "百度新闻·欧洲风险", "type": "baidu", "url": "baidu", "credibility_tier": 2, "config": {"keywords": "欧洲经济,德国工业,AfD,勒庞,法国大选,霍尔木兹,欧盟防务"}},
-        # Tier 2 — AI 浪潮监测（信源协议, 2026-08-20, analysis/ai-wave-monitor.md）
-        {"name": "量子位", "type": "rss", "url": "https://www.qbitai.com/feed", "credibility_tier": 2},
+        # ═══ Tier 2 — 欧洲风险监测（信源协议, 2026-08-13; 本机不可达待服务器复验） ═══
+        {"name": "Politico Europe", "type": "rss", "url": "https://www.politico.eu/feed/", "credibility_tier": 2, "status": "paused"},
+        {"name": "Euractiv", "type": "rss", "url": "https://www.euractiv.com/feed/", "credibility_tier": 2, "status": "paused"},
+        {"name": "DW World", "type": "rss", "url": "https://rss.dw.com/rdf/rss-en-world", "credibility_tier": 2, "status": "paused"},
+        # ═══ Tier 2 — AI 浪潮监测（信源协议, 2026-08-20, analysis/ai-wave-monitor.md） ═══
+        {"name": "量子位", "type": "rss", "url": "https://www.qbitai.com/feed", "credibility_tier": 2, "status": "paused"},  # 2026-08-25: feed 需云环境, 本机验证失败
         {"name": "MIT TR AI", "type": "rss", "url": "https://www.technologyreview.com/topic/artificial-intelligence/feed", "credibility_tier": 2},
         {"name": "TechCrunch AI", "type": "rss", "url": "https://techcrunch.com/category/artificial-intelligence/feed/", "credibility_tier": 2},
         {"name": "VentureBeat AI", "type": "rss", "url": "https://venturebeat.com/category/ai/feed/", "credibility_tier": 2},
         {"name": "The Verge AI", "type": "rss", "url": "https://www.theverge.com/rss/ai-artificial-intelligence/index.xml", "credibility_tier": 2},
-        {"name": "百度新闻·AI算力政策", "type": "baidu", "url": "baidu", "credibility_tier": 2, "config": {"keywords": "东数西算,算力基础设施,公共算力,智算中心"}},
-        {"name": "百度新闻·AI税与自动化税", "type": "baidu", "url": "baidu", "credibility_tier": 2, "config": {"keywords": "AI税,自动化税,机器人税,人工智能立法"}},
-        {"name": "百度新闻·AI治理与算法管理", "type": "baidu", "url": "baidu", "credibility_tier": 2, "config": {"keywords": "AI治理,算法管理,算法备案,深度合成监管"}},
+    ]
+
+    # 2026-08-25 大清扫移除名单（不在 defaults 里 + 存在于库 → 删除或暂停）。
+    # 删除: 0 数据纯僵尸（占位符/反爬挡死/存档僵尸）——无关联 intel，删了干净。
+    # 暂停: 有历史数据但退出轮转的（半死频道/专题源降级）——数据保留可查。
+    _retire_delete = [
+        "CGTN",  # 占位符 url='c'
+        "TASS",  # 占位符 url='t'
+        "百度新闻", "百度新闻·欧洲风险", "百度新闻·AI算力政策", "百度新闻·AI税与自动化税", "百度新闻·AI治理与算法管理",  # 反爬挡死 0产出
+        "知乎·UAP话题",  # 反爬 0产出
+        "环球时报英文",  # 7天0产出
+        "Euronews",  # 本机不可达, 非协议核心源
+        "China Daily World", "China Daily China", "China Daily Opinion", "China Daily Business",  # 2017存档僵尸, 0新数据
+        "Xinhua English",  # 2018存档僵尸
+        "人民日报",  # feed停更14个月
+    ]
+    _retire_pause = [
+        "知乎·韩真宇",  # 反爬基本挡死(7天1条), UAP专题降级为手动
+        "CGTN China", "CGTN Business", "CGTN Tech", "CGTN Opinion",  # 半死频道(90%存档稿)退出轮转, 历史200条保留
     ]
 
     async with async_session() as db:
@@ -97,6 +95,7 @@ async def _seed_default_sources():
                     type=d["type"],
                     url=d["url"],
                     credibility_tier=d["credibility_tier"],
+                    status=d.get("status", "active"),
                     # 种子源 tier 为人工策展结果，标记手动覆盖，
                     # 防止自动评估按域名规则改写（P0 修复）
                     config={**d.get("config", {}), "credibility_manual": True},
@@ -106,6 +105,13 @@ async def _seed_default_sources():
                 existing_config = dict(existing.config or {})
                 if not existing_config.get("credibility_manual"):
                     existing.config = {**existing_config, "credibility_manual": True}
+        # 2026-08-25 大清扫: 僵尸源删除 / 专题源暂停（幂等——不在名单里的不碰）
+        result = await db.execute(select(Source))
+        for s in result.scalars():
+            if s.name in _retire_delete:
+                await db.delete(s)
+            elif s.name in _retire_pause and s.status == "active":
+                s.status = "paused"
         await db.commit()
 
 

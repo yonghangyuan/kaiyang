@@ -45,6 +45,9 @@ class RSSSource(AbstractSource):
 
     # 存档旧稿拦截窗口（超过即不入库；WorldMonitor 冻结规则同款 30 天）
     MAX_AGE_DAYS = 30
+    # 单次抓取条数上限——军网 81.cn/rss.xml 全站聚合一次推 2000+ 条，
+    # 不截断会一次全量入库冲爆聚合器；增量场景 60 条绰绰有余
+    MAX_ENTRIES = 60
 
     async def _fetch(self) -> list[dict[str, Any]]:
         """异步抓取 RSS Feed（to_thread + 超时 + 条件请求）。"""
@@ -87,7 +90,7 @@ class RSSSource(AbstractSource):
                 "author": entry.get("author", ""),
                 "tags": [t.get("term", "") for t in entry.get("tags", [])],
             }
-            for entry in feed.entries
+            for entry in feed.entries[: self.MAX_ENTRIES]
         ]
 
     @staticmethod
