@@ -25,6 +25,7 @@ dependencies = [
     "geopy>=2.4.1",
     "jieba>=0.42.1",
     "tenacity>=9.0.0",
+    "jmespath>=1.0.0",
 ]
 
 [project.optional-dependencies]

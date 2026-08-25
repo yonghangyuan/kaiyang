@@ -94,27 +94,27 @@ class RSSSource(AbstractSource):
     def _parse_published(published_str: str) -> datetime | None:
         """解析发布时间字符串为 datetime。
 
-        兼容三种形态（人民日报等中文源给纯日期，不喂 RFC822）:
+        兼容形态（实测踩过的坑）:
           - RFC822: 'Thu, 05 Jun 2025 05:29:00 GMT' (parsedate_to_datetime)
-          - ISO 日期: '2025-06-05' / '2025-06-05T05:29:00'
+          - ISO 含毫秒+时区: '2017-12-12T00:27:08.000+0000' (China Daily)
+          - ISO 纯日期: '2018-01-24' (Xinhua) / '2025-06-05' (人民日报)
           - 常见中文格式: '2025年06月05日 05:29'
         """
         if not published_str:
             return None
-        # 1) RFC822（标准 RSS 日期）
+        s = published_str.strip()
+        # 1) ISO 家族（fromisoformat 通吃毫秒/时区/Z 后缀；naive 补 UTC）
+        try:
+            dt = datetime.fromisoformat(s.replace("Z", "+00:00"))
+            return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+        except ValueError:
+            pass
+        # 2) RFC822（标准 RSS 日期）
         try:
             from email.utils import parsedate_to_datetime
-            return parsedate_to_datetime(published_str)
+            return parsedate_to_datetime(s)
         except Exception:
             pass
-        # 2) ISO / 纯日期（人民日报: '2025-06-05'）
-        s = published_str.strip()
-        for fmt in ("%Y-%m-%dT%H:%M:%S", "%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M", "%Y-%m-%d"):
-            try:
-                dt = datetime.strptime(s, fmt)
-                return dt.replace(tzinfo=timezone.utc)
-            except ValueError:
-                continue
         # 3) 中文格式 '2025年06月05日 05:29'
         cn = re.match(r"(\d{4})年(\d{1,2})月(\d{1,2})日\s*(\d{1,2}):(\d{2})", s)
         if cn:

@@ -4,24 +4,35 @@
   - Streamable HTTP transport (POST /mcp)
   - tools/list (公开) / tools/call (需认证)
   - JSON-RPC 2.0 错误处理
+
+输出纪律（2026-08-25，对标 WM dispatch.ts）——tools/call 统一走:
+  限流 → 执行 → jmespath 投影(fail-soft) → 预算门 → 遥测
 """
 
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
+import time
 
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 
-from .registry import TOOLS, get_tool, list_tools
+from .registry import get_tool, public_tools
+from .discipline import (
+    RATE_LIMIT_PER_MIN,
+    apply_jmespath,
+    budget_exceeded_envelope,
+    rate_limiter,
+    record_telemetry,
+    utf8_byte_length,
+)
 
 router = APIRouter(prefix="/mcp", tags=["mcp"])
 
 # MCP 服务器元信息
 SERVER_INFO = {
     "name": "kaiyang",
-    "version": "0.1.0",
+    "version": "0.2.0",
     "protocolVersion": "2025-03-26",
 }
 
@@ -66,21 +77,72 @@ async def mcp_handler(request: Request):
                 "protocolVersion": SERVER_INFO["protocolVersion"],
                 "serverInfo": {"name": SERVER_INFO["name"], "version": SERVER_INFO["version"]},
                 "capabilities": {"tools": {}},
+                "instructions": (
+                    "每个工具支持通用参数 jmespath（JMESPath 投影表达式），用于裁剪返回字段、"
+                    "控制输出体积。例: {'keyword':'台海','limit':50,'jmespath':'items[].title'}。"
+                    "返回超过该工具输出预算（128KB 级）时会收到 _budget_exceeded 信封，"
+                    "按 hint 用 jmespath 瘦身或缩小 limit 重试。"
+                    "限流: 60 次/分钟/IP。"
+                ),
             }, req_id))
 
         elif method == "tools/list":
-            return JSONResponse(_rpc_ok({"tools": TOOLS}, req_id))
+            return JSONResponse(_rpc_ok({"tools": public_tools()}, req_id))
 
         elif method == "tools/call":
+            # 限流——每 IP 滑窗
+            client_ip = request.client.host if request.client else "unknown"
+            allowed, retry_after = rate_limiter.check(client_ip, RATE_LIMIT_PER_MIN, 60.0)
+            if not allowed:
+                return JSONResponse(
+                    _rpc_error(
+                        -32000,
+                        f"Rate limit exceeded ({RATE_LIMIT_PER_MIN}/min). Retry in {retry_after:.0f}s.",
+                        req_id,
+                    ),
+                    status_code=429,
+                    headers={"Retry-After": str(int(retry_after) + 1)},
+                )
+
             tool_name = params.get("name", "")
-            tool_args = params.get("arguments", {})
+            tool_args = params.get("arguments", {}) or {}
+            # jmespath 是 dispatch 层参数，不透传给工具实现
+            jmespath_expr = tool_args.pop("jmespath", None)
+            jmespath_used = isinstance(jmespath_expr, str) and len(jmespath_expr) > 0
+
+            tool = get_tool(tool_name)
+            budget = tool.get("_outputBudgetBytes", 131072) if tool else 131072
+
+            t_start = time.monotonic()
             result = await _dispatch_tool(tool_name, tool_args)
-            if result.get("error"):
+            latency_ms = (time.monotonic() - t_start) * 1000
+
+            ok = not (isinstance(result, dict) and result.get("error"))
+            if not ok:
+                record_telemetry(tool_name, latency_ms, 0, ok=False, jmespath_used=jmespath_used)
                 return JSONResponse(_rpc_error(-32000, result["error"], req_id))
-            return JSONResponse(_rpc_ok({"content": [{"type": "text", "text": json.dumps(result, ensure_ascii=False)}]}, req_id))
+
+            # jmespath 投影（fail-soft）→ 预算门
+            text, jmes_failed = apply_jmespath(result, jmespath_expr)
+            text_bytes = utf8_byte_length(text)
+            exceeded = text_bytes > budget
+            record_telemetry(
+                tool_name, latency_ms, text_bytes, ok=True,
+                budget_exceeded=exceeded,
+                jmespath_used=jmespath_used,
+                jmespath_failed=jmes_failed,
+            )
+            if exceeded:
+                text = budget_exceeded_envelope(budget, text_bytes, jmespath_used)
+            return JSONResponse(_rpc_ok({"content": [{"type": "text", "text": text}]}, req_id))
 
         elif method == "ping":
             return JSONResponse(_rpc_ok({}, req_id))
+
+        elif method == "telemetry/stats":
+            # 自定义扩展：调用统计（个人平台观察用，非 MCP 标准方法）
+            from .discipline import get_telemetry_stats
+            return JSONResponse(_rpc_ok(get_telemetry_stats(), req_id))
 
         else:
             return JSONResponse(_rpc_error(-32601, f"Method not found: {method}", req_id))
