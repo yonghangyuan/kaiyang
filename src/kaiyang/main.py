@@ -149,6 +149,10 @@ async def lifespan(app: FastAPI):
     from .pipeline.fetcher import fetcher
     asyncio.create_task(fetcher.start_periodic())
 
+    # 专题追踪: 批处理分析器（6h 一轮, 天枢回路）
+    from .pipeline.issue_analyzer import watch_scheduler
+    asyncio.create_task(watch_scheduler.start())
+
     # FTS5 索引同步（等首批数据入库后执行）
     async def _init_fts():
         await asyncio.sleep(5)
@@ -187,6 +191,7 @@ async def lifespan(app: FastAPI):
     yield
 
     # 关闭
+    watch_scheduler.stop()
     await fetcher.stop()
     await close_db()
     await close_redis()
@@ -384,6 +389,7 @@ from .api.threat import router as threat_router
 from .api.verify import router as verify_router
 from .api.narrative import router as narrative_router
 from .api.commands import router as commands_router
+from .api.watch import router as watch_router
 from .mcp.handler import router as mcp_router
 
 app.include_router(sources_router)
@@ -401,6 +407,7 @@ app.include_router(threat_router)
 app.include_router(verify_router)
 app.include_router(narrative_router)
 app.include_router(commands_router)
+app.include_router(watch_router)
 app.include_router(mcp_router)
 
 

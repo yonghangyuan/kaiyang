@@ -238,6 +238,15 @@ class IntelFetcher:
                     await db.rollback()
                     continue
             await db.commit()
+
+        # 专题路由: 新入库条目按 watch_keywords 打标进专题池（旁路，失败不管道）
+        if stored > 0:
+            try:
+                from .issue_router import tag_intel_for_issues
+                await tag_intel_for_issues([i for i in items if not (i.raw_data or {}).get("issues")])
+            except Exception:
+                pass
+
         return stored
 
     async def _update_last_fetch(self, source_id: str) -> None:

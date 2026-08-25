@@ -7,6 +7,7 @@ import ThreatDashboard from './ThreatDashboard'
 import BriefingCard from './BriefingCard'
 import LiveFeed from './LiveFeed'
 import EntityProfile from './EntityProfile'
+import WatchPanel from './WatchPanel'
 
 interface Briefing { query: string; summary: string; point_count: number; timeline_count: number; web_count?: number; points: any[]; timeline: any[] }
 
@@ -18,7 +19,7 @@ interface Props {
 }
 
 export default function Sidebar({ briefing, chatMessages, onSearch, onChat, status, onClearAnnotations, onFlyTo, stats }: Props) {
-  const [tab, setTab] = useState<'live'|'feed'|'chat'>('live')
+  const [tab, setTab] = useState<'live'|'feed'|'chat'|'watch'>('live')
   const [input, setInput] = useState('')
   const [graphEntity, setGraphEntity] = useState<string | null>(null)
   const [profileEntity, setProfileEntity] = useState<string | null>(null)
@@ -35,8 +36,8 @@ export default function Sidebar({ briefing, chatMessages, onSearch, onChat, stat
   return (
     <div style={{ width:380, background:'var(--bg-card)', borderLeft:'1px solid var(--border)', display:'flex', flexDirection:'column' }}>
       <div style={{ display:'flex', borderBottom:'1px solid var(--border)' }}>
-        {(['live','feed','chat'] as const).map(t => (
-          <button key={t} onClick={() => setTab(t)} style={S.tabBtn(tab===t)}>{{live:'实时',feed:'分析',chat:'对话'}[t]}</button>
+        {(['live','feed','chat','watch'] as const).map(t => (
+          <button key={t} onClick={() => setTab(t)} style={S.tabBtn(tab===t)}>{{live:'实时',feed:'分析',chat:'对话',watch:'专题'}[t]}</button>
         ))}
       </div>
       {stats && <div style={{ display:'flex',gap:8,padding:'6px 12px',background:'#131a35',borderBottom:'1px solid var(--border)',fontSize:11 }}>
@@ -67,6 +68,7 @@ export default function Sidebar({ briefing, chatMessages, onSearch, onChat, stat
                 {graphEntity && <EntityGraph entityId={graphEntity} onClose={() => setGraphEntity(null)} />}
               </>
         )}
+        {tab === 'watch' && <WatchPanel />}
         {tab === 'chat' && (
           chatMessages.length===0
             ? <div style={{textAlign:'center',padding:40,color:'var(--fg-dim)',fontSize:13}}>开阳 AI 助手</div>

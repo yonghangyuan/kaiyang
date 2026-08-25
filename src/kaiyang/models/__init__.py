@@ -153,6 +153,14 @@ class Issue(Base):
     resolved_at = Column(DateTime(timezone=True))
     prediction = Column(JSON)
     audit_decision_id = Column(String(64))
+    # ── 专题追踪层 (2026-08-25, 长期调研) ──
+    # watch:  开启自动追踪（专题路由器会把新情报打标进池、
+    #         批处理分析器产出 findings）
+    # watch_keywords: 订阅关键词（逗号分隔，命中即入专题池）
+    # watch_last_run: 上次批处理分析水位（分析该时间后的新条目）
+    watch = Column(Integer, default=0, index=True)  # 0关 1开
+    watch_keywords = Column(Text, default="")
+    watch_last_run = Column(DateTime(timezone=True))
 
     def __repr__(self) -> str:
         return f"<Issue {self.id} [{self.status}]>"
@@ -177,6 +185,39 @@ class IssueEvent(Base):
 
     def __repr__(self) -> str:
         return f"<IssueEvent {self.issue_id} ←[{self.relation}] {self.event_id}>"
+
+
+# ── 专题调研发现（长期追踪, 2026-08-25）────────────────────────
+
+class IssueFinding(Base):
+    """专题调研发现——AI 批处理分析器的产出，审批层的对象。
+
+    两类（审批粒度不同的依据）:
+      - note:   发现性笔记（背景/分析/线索）→ 自动入库，人可事后清理
+      - chain:  结构性改动（建议新建事件/挂入事件链）→ 必须 pending 等审批
+
+    状态流转: pending → approved(已执行) / rejected(驳回留档)
+    created_by: ai(批处理分析器) / human(手动添加)
+    """
+    __tablename__ = "issue_findings"
+
+    id = Column(String(64), primary_key=True, default=lambda: _new_id("FD"))
+    issue_id = Column(String(64), ForeignKey("issues.id"), nullable=False, index=True)
+    finding_type = Column(String(16), default="note", index=True)  # note / chain
+    status = Column(String(16), default="auto", index=True)  # auto(note自动入库) / pending / approved / rejected
+    content = Column(Text, nullable=False)
+    # chain 类: 建议的结构性改动 {action: link_event|create_event, event_id?, title?, relation, evidence}
+    proposal = Column(JSON)
+    # 证据: 关联的 intel 条目 id 列表（溯源）
+    evidence_ids = Column(JSON, default=list)
+    intel_id = Column(String(64), index=True)  # 触发本条发现的那条情报
+    created_by = Column(String(16), default="ai")
+    reviewed_at = Column(DateTime(timezone=True))
+    reviewed_note = Column(Text)
+    created_at = Column(DateTime(timezone=True), default=_utcnow)
+
+    def __repr__(self) -> str:
+        return f"<IssueFinding {self.id} [{self.finding_type}/{self.status}]>"
 
 
 # ── 实体 ─────────────────────────────────────────────────────────

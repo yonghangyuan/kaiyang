@@ -294,4 +294,7 @@ def _issue_to_dict(i: Issue) -> dict:
         "primary_country": i.primary_country,
         "created_at": i.created_at.isoformat() if i.created_at else None,
         "resolved_at": i.resolved_at.isoformat() if i.resolved_at else None,
+        # 专题追踪层 (2026-08-25)
+        "watch": i.watch or 0,
+        "watch_keywords": i.watch_keywords or "",
     }
