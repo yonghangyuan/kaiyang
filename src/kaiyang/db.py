@@ -69,6 +69,11 @@ async def init_db() -> None:
                 "CREATE INDEX IF NOT EXISTS ix_events_dedupe_key ON events (dedupe_key)",
                 "ALTER TABLE events ADD COLUMN corroboration_count INTEGER DEFAULT 0",
                 "ALTER TABLE events ADD COLUMN importance INTEGER",
+                # 专题追踪层列 (2026-08-25)
+                "ALTER TABLE issues ADD COLUMN watch INTEGER DEFAULT 0",
+                "CREATE INDEX IF NOT EXISTS ix_issues_watch ON issues (watch)",
+                "ALTER TABLE issues ADD COLUMN watch_keywords TEXT DEFAULT ''",
+                "ALTER TABLE issues ADD COLUMN watch_last_run DATETIME",
             ):
                 try:
                     await conn.execute(text(ddl))
