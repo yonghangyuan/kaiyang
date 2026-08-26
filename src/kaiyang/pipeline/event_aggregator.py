@@ -21,7 +21,7 @@ from datetime import datetime, timedelta, timezone
 import jieba
 
 from ..db import async_session
-from ..models import Event, IntelItem, _new_id, _utcnow
+from ..models import Event, IntelItem, Source, _new_id, _utcnow
 from .scoring import score_event_importance
 
 
@@ -43,21 +43,31 @@ def make_dedupe_key(title: str) -> str:
     return hashlib.sha256(normalize_title(title).encode("utf-8")).hexdigest()[:16]
 
 
-# importance 权重（对标 WM list-feed-digest severity0.55/tier0.2/corro0.15/recency0.1）
-# tier 通道待信源分层表人工标注后接入，当前权重并入 severity。
-_IMP_W_SEVERITY = 0.7
-_IMP_W_CORRO = 0.2
+# importance 权重（对标 WM list-feed-digest 终版: severity0.55/tier0.2/corro0.15/recency0.1）
+# 2026-08-26 tier 通道接入: 24 源清扫完毕, tier 字段全库可信。
+# tier_score = (5 - tier)/4*100 → tier1=100, tier2=75, tier3=50, tier4=25。
+# 无源信息（tier=None）按 tier3 折算 50 分。
+_IMP_W_SEVERITY = 0.55
+_IMP_W_TIER = 0.2
+_IMP_W_CORRO = 0.15
 _IMP_W_RECENCY = 0.1
 
 
-def _compute_importance(severity: int, corroboration: int, time_start_ts: float) -> int:
-    """综合重要性 0-100。"""
-    sev_score = min(severity, 10) / 10 * 100
-    corro_score = min(corroboration, 5) / 5 * 100
+def tier_score(tier: int | None) -> float:
+    """信源可信度分: tier1官方=100 ~ tier4未验证=25, 未知=50。"""
+    t = tier if tier in (1, 2, 3, 4) else 3
+    return (5 - t) / 4 * 100
+
+
+def _compute_importance(severity: int, corroboration: int, time_start_ts: float,
+                        tier: int | None = None) -> int:
+    """综合重要性 0-100 = severity×0.55 + tier×0.2 + corro×0.15 + recency×0.1。"""
+    sev = min(severity, 10) / 10 * 100
+    corr = min(corroboration, 5) / 5 * 100
     age_h = max(0.0, (datetime.now(timezone.utc).timestamp() - time_start_ts) / 3600)
-    recency_score = max(0.0, 1 - age_h / 24) * 100
-    raw = (sev_score * _IMP_W_SEVERITY + corro_score * _IMP_W_CORRO
-           + recency_score * _IMP_W_RECENCY)
+    rec = max(0.0, 1 - age_h / 24) * 100
+    raw = (sev * _IMP_W_SEVERITY + tier_score(tier) * _IMP_W_TIER
+           + corr * _IMP_W_CORRO + rec * _IMP_W_RECENCY)
     return int(round(raw))
 
 
@@ -188,6 +198,13 @@ async def aggregate_events(limit: int = 200) -> dict:
         if len(items) < 2:
             return {"clusters_found": 0, "events_created": 0, "items_clustered": 0}
 
+        # tier 表: source_id → credibility_tier (importance 四通道之一)
+        tier_map: dict[str, int | None] = {}
+        if items:
+            sr = await db.execute(select(Source.id, Source.credibility_tier)
+                                  .where(Source.id.in_({i.source_id for i in items})))
+            tier_map = dict(sr.all())
+
         # 提取关键词
         docs: list[list[str]] = []
         for item in items:
@@ -255,6 +272,10 @@ async def aggregate_events(limit: int = 200) -> dict:
 
             # 佐证计数: 簇内独立信源数
             corroboration = len({i.source_id for i in cluster_items})
+            # 簇内最优 tier（WM 规则: 簇代表选 tier 最小/最可信的源）
+            cluster_tiers = [tier_map.get(i.source_id) for i in cluster_items
+                             if tier_map.get(i.source_id) in (1, 2, 3, 4)]
+            best_tier = min(cluster_tiers) if cluster_tiers else None
 
             # 提取国家/事件类型
             country = _extract_country(
@@ -274,7 +295,8 @@ async def aggregate_events(limit: int = 200) -> dict:
                 )
                 existing.importance = _compute_importance(
                     existing.severity or 1, corroboration,
-                    (existing.time_start or _utcnow()).timestamp())
+                    (existing.time_start or _utcnow()).timestamp(),
+                    tier=best_tier)
                 events_merged += 1
                 items_clustered += len(cluster_items)
                 continue
@@ -298,7 +320,8 @@ async def aggregate_events(limit: int = 200) -> dict:
             event.confidence = min(len(cluster_items) / (len(cluster_items) + 1), 0.95)
             event.importance = _compute_importance(
                 event.severity, corroboration,
-                (event.time_start or _utcnow()).timestamp())
+                (event.time_start or _utcnow()).timestamp(),
+                tier=best_tier)
             db.add(event)
             await db.flush()  # 拿 id 供推送
             existing_by_key[dedupe_key] = event
