@@ -252,6 +252,8 @@ async def aggregate_events(limit: int = 200) -> dict:
 
         # 既有 dedupe_key → Event 映射（本窗口内一次查全，内存命中）
         existing_by_key: dict[str, Event] = {}
+        _event_vec_cache: dict[str, object] = {}  # 语义近邻扫描的向量缓存
+        semantic_merges = 0
         existing_rows = (await db.execute(
             select(Event).where(Event.dedupe_key.isnot(None)))).scalars().all()
         for e in existing_rows:
@@ -283,6 +285,29 @@ async def aggregate_events(limit: int = 200) -> dict:
             )
 
             existing = existing_by_key.get(dedupe_key)
+            if existing is None:
+                # 语义近邻兜底 (2026-08-27): 精确 key 未命中 → 相似度扫既有事件
+                # （跨源改写/截断的标题, story-identity 层合并——corroboration 不再断裂）
+                try:
+                    from .story_identity import story_vector, similarity, STORY_SIMILARITY_THRESHOLD
+                    new_vec = story_vector(best_item.title or anchor.title or "")
+                    if new_vec is not None:
+                        best_hit, best_score = None, 0.0
+                        for key, ev in existing_by_key.items():
+                            ev_vec = _event_vec_cache.get(key)
+                            if ev_vec is None:
+                                ev_vec = story_vector(ev.title or "")
+                                _event_vec_cache[key] = ev_vec
+                            if ev_vec is None:
+                                continue
+                            s = similarity(new_vec, ev_vec)
+                            if s > best_score:
+                                best_hit, best_score = ev, s
+                        if best_hit is not None and best_score >= STORY_SIMILARITY_THRESHOLD:
+                            existing = best_hit  # 语义命中: 合并进既有事件
+                            semantic_merges += 1
+                except Exception:
+                    pass
             if existing is not None:
                 # 同一事件的新一轮报道 → 合并（不新建）
                 merged_ids = set(existing.source_items or []) | {i.id for i in cluster_items}
@@ -345,6 +370,7 @@ async def aggregate_events(limit: int = 200) -> dict:
         "clusters_found": len(multi_clusters),
         "events_created": events_created,
         "events_merged": events_merged,
+        "semantic_merges": semantic_merges,
         "items_clustered": items_clustered,
         "total_items": len(items),
         "threshold": SIMILARITY_THRESHOLD,
