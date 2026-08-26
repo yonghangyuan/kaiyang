@@ -13,6 +13,13 @@ from ..models import Annotation, Facility, IntelItem, Event, Issue, IssueEvent
 router = APIRouter(prefix="/api/map", tags=["map"])
 
 
+@router.get("/basemaps")
+async def basemaps():
+    """可选底图清单（含 key 控制的天地图与自定义 XYZ 源）。"""
+    from ..config import settings
+    return {"basemaps": settings.basemap_options}
+
+
 @router.post("/plot")
 async def plot_events(request: Request):
     """返回地理标注点——优先展示聚合事件，无事件时回退到原始情报。"""

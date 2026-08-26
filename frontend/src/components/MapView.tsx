@@ -12,6 +12,11 @@ interface Props { events: GeoPoint[]; searchResults: GeoPoint[]; annotations: An
 export default function MapView({ events, searchResults, annotations, chain, flyTo, topicLayers = [], activeTopics = [], onToggleTopic }: Props) {
   const mapRef = useRef<L.Map | null>(null)
   const groupsRef = useRef<Record<string, L.LayerGroup>>({})
+  // ── 多源卫星底图 (2026-08-26, 奥维方向): 后端 /api/map/basemaps 驱动 ──
+  const [basemaps, setBasemaps] = useState<Record<string, any>>({})
+  useEffect(() => {
+    fetch('/api/map/basemaps').then(r => r.json()).then(d => setBasemaps(d.basemaps || {})).catch(() => {})
+  }, [])
   // ── 时间轴回放 (2026-08-26): 滑块拖动 → 只显示该日期前(含)的事件 ──
   const [timeCursor, setTimeCursor] = useState<number | null>(null)  // epoch ms; null=全部
   const [showTimeline, setShowTimeline] = useState(false)
@@ -38,12 +43,12 @@ export default function MapView({ events, searchResults, annotations, chain, fly
     if (mapRef.current) return
     const map = L.map('map-container').setView([35, 105], 4)
 
+    // 静态底图: 高德矢量(默认)。动态卫星源(NASA/天地图/自定义XYZ)由 basemaps effect 注入
     const baseTiles: Record<string, L.TileLayer> = {
       '高德地图': L.tileLayer('https://webst0{s}.is.autonavi.com/appmaptile?style=6&x={x}&y={y}&z={z}', { subdomains: '1234', maxZoom: 18 }),
-      '卫星影像': L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { maxZoom: 17 }),
-      // 注: CartoDB/OSM 的国界渲染不符合中国地图出版标准（台湾/藏南/阿克赛钦），
-      // 已从底图选项移除 (2026-08-21)。国内场景用高德，全球影像用 ESRI 卫星图（无边界标注）。
     }
+    // 注: CartoDB/OSM 的国界渲染不符合中国地图出版标准（台湾/藏南/阿克赛钦），
+    // 已从底图选项移除 (2026-08-21)。卫星源走 ESRI/NASA/天地图（无边界标注或官方合规）。
     baseTiles['高德地图'].addTo(map)
 
     // Create data layer groups
@@ -60,7 +65,41 @@ export default function MapView({ events, searchResults, annotations, chain, fly
 
     L.control.layers(baseTiles, overlays as any, { position: 'bottomright', collapsed: true }).addTo(map)
     mapRef.current = map
+    ;(map as any)._kaiyangBaseTiles = baseTiles
   }, [])
+
+  // 动态卫星底图注入: basemaps 配置变化时把新源加进图层切换器
+  // (layers control 不可变——重建控件是 Leaflet 惯用法)
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map || !basemaps || !Object.keys(basemaps).length) return
+    const existing: Record<string, L.TileLayer> = (map as any)._kaiyangBaseTiles || {}
+    // ESRI 卫星保持常驻(旧版默认)
+    if (!existing['卫星影像']) {
+      existing['卫星影像'] = L.tileLayer(
+        'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+        { maxZoom: 17 })
+    }
+    for (const [key, cfg] of Object.entries(basemaps)) {
+      if (existing[cfg.label]) continue
+      let url: string = cfg.url
+      if (cfg.date === 'dynamic') {
+        // NASA GIBS: 今天(UTC)影像, 回退一天保证瓦片已生成
+        const d = new Date()
+        const iso = d.toISOString().substring(0, 10)
+        url = url.replace('{date}', iso)
+      }
+      const opts: any = { maxZoom: cfg.maxZoom || 17 }
+      if (cfg.subdomains) opts.subdomains = cfg.subdomains
+      existing[cfg.label] = L.tileLayer(url, opts)
+    }
+    // 重建图层控件（含新底图）
+    ;(map as any)._kaiyangLayersControl?.remove()
+    const overlays = groupsRef.current || {}
+    const ctrl = L.control.layers(existing as any, overlays as any, { position: 'bottomright', collapsed: true }).addTo(map)
+    ;(map as any)._kaiyangLayersControl = ctrl
+    ;(map as any)._kaiyangBaseTiles = existing
+  }, [basemaps])
 
   // Update data layers
   useEffect(() => {
