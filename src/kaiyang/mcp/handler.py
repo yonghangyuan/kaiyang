@@ -134,7 +134,16 @@ async def mcp_handler(request: Request):
             )
             if exceeded:
                 text = budget_exceeded_envelope(budget, text_bytes, jmespath_used)
-            return JSONResponse(_rpc_ok({"content": [{"type": "text", "text": text}]}, req_id))
+            # SDK v2 校验: 声明了 outputSchema 的工具必须返回 structuredContent
+            # （否则客户端 call_tool 直接 RuntimeError）。text 与 structured 同源。
+            try:
+                structured = json.loads(text) if text.startswith(("{", "[")) else None
+            except json.JSONDecodeError:
+                structured = None
+            return JSONResponse(_rpc_ok({
+                "content": [{"type": "text", "text": text}],
+                **({"structuredContent": structured} if structured is not None else {}),
+            }, req_id))
 
         elif method == "ping":
             return JSONResponse(_rpc_ok({}, req_id))
@@ -331,6 +340,96 @@ async def _dispatch_tool(tool_name: str, args: dict) -> dict:
                 for ann in r.scalars(): await db.delete(ann); count += 1
                 await db.commit()
             return {"ok": True, "deleted": count}
+
+        # ── 自主情报官闭环工具 ──────────────────────────────
+
+        elif tool_name == "create_watch_issue":
+            from ..db import async_session
+            from ..models import Issue, _new_id, _utcnow
+            title = args.get("title", "").strip()
+            keywords = args.get("keywords", "").strip()
+            if not title or not keywords:
+                return {"error": "title 和 keywords 必填"}
+            # 同名去重
+            async with async_session() as db:
+                from sqlalchemy import select
+                dup = (await db.execute(select(Issue).where(Issue.title == title))).scalar_one_or_none()
+                if dup:
+                    # 已存在 → 直接给它开追踪（幂等语义）
+                    dup.watch = 1
+                    dup.watch_keywords = keywords
+                    dup.watch_last_run = _utcnow()
+                    await db.commit()
+                    return {"ok": True, "issue_id": dup.id, "watch": 1, "keywords": keywords, "note": "已存在, 开启追踪"}
+                iss = Issue(
+                    id=_new_id("IS"), title=title,
+                    description=args.get("description", ""),
+                    category=args.get("category", "geopolitical"),
+                    status="tracking", watch=1,
+                    watch_keywords=keywords, watch_last_run=_utcnow(),
+                    created_at=_utcnow(),
+                )
+                db.add(iss)
+                await db.commit()
+                return {"ok": True, "issue_id": iss.id, "watch": 1, "keywords": keywords}
+
+        elif tool_name == "probe_source":
+            from ..pipeline.source_prober import probe_source as _probe
+            return await _probe(args.get("url", ""))
+
+        elif tool_name == "propose_source":
+            from ..db import async_session
+            from ..models import IssueFinding, _new_id, _utcnow
+            from sqlalchemy import select
+            from ..models import Source
+            # 已在库的同 URL 源 → 不重复提
+            async with async_session() as db:
+                dup = (await db.execute(select(Source).where(Source.url == args.get("url", "")))).scalar_one_or_none()
+                if dup:
+                    return {"error": f"源已在库: {dup.name} ({dup.status})"}
+                f = IssueFinding(
+                    id=_new_id("FD"),
+                    issue_id=args.get("issue_id") or "SR-INTAKE",  # 无专题挂靠时用收件箱专户
+                    finding_type="chain",
+                    status="pending",
+                    content=f"信源准入: {args.get('name','')} — {args.get('reason','')}",
+                    proposal={
+                        "action": "add_source",
+                        "name": args.get("name", ""),
+                        "url": args.get("url", ""),
+                        "tier": args.get("tier", 4),
+                        "reason": args.get("reason", ""),
+                    },
+                    created_by="ai",
+                )
+                db.add(f)
+                await db.commit()
+                return {"ok": True, "finding_id": f.id, "status": "pending"}
+
+        elif tool_name == "get_topic_brief":
+            from ..db import async_session
+            from ..models import Issue, IssueEvent, IssueFinding, IntelItem
+            from sqlalchemy import select, func
+            async with async_session() as db:
+                q = select(Issue).where(Issue.watch == 1)
+                if args.get("issue_id"):
+                    q = q.where(Issue.id == args["issue_id"])
+                issues = (await db.execute(q)).scalars().all()
+                out = []
+                for iss in issues:
+                    pool = (await db.execute(
+                        select(func.count()).select_from(IntelItem)
+                        .where(IntelItem.raw_data.contains(iss.id)))).scalar()
+                    chain_n = (await db.execute(
+                        select(func.count()).select_from(IssueEvent)
+                        .where(IssueEvent.issue_id == iss.id))).scalar()
+                    finds = (await db.execute(
+                        select(func.count()).select_from(IssueFinding)
+                        .where(IssueFinding.issue_id == iss.id))).scalar()
+                    out.append({"id": iss.id, "title": iss.title, "watch": iss.watch or 0,
+                                "keywords": iss.watch_keywords or "", "pool_count": pool or 0,
+                                "chain_count": chain_n or 0, "recent_findings": finds or 0})
+                return {"issues": out}
 
         else:
             return {"error": f"Tool {tool_name} not implemented"}

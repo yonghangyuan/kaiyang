@@ -66,7 +66,8 @@ async def issue_pool(issue_id: str, limit: int = 100):
 
 @router.get("/issues/{issue_id}/findings")
 async def issue_findings(issue_id: str, status: str | None = None):
-    """调研发现。status 过滤: auto/pending/approved/rejected。"""
+    """调研发现。status 过滤: auto/pending/approved/rejected。
+    issue_id=SR-INTAKE 为源准入收件箱（propose_source 的建议落这里）。"""
     async with async_session() as db:
         q = select(IssueFinding).where(IssueFinding.issue_id == issue_id)
         if status:
@@ -80,6 +81,25 @@ async def issue_findings(issue_id: str, status: str | None = None):
             {"id": f.id, "type": f.finding_type, "status": f.status,
              "content": f.content, "proposal": f.proposal,
              "created_by": f.created_by, "created_at": f.created_at.isoformat()}
+            for f in rows
+        ],
+    }
+
+
+@router.get("/intake/pending")
+async def intake_pending():
+    """源准入收件箱（SR-INTAKE 专户的 pending 建议）。"""
+    async with async_session() as db:
+        q = (select(IssueFinding)
+             .where(IssueFinding.issue_id == "SR-INTAKE", IssueFinding.status == "pending")
+             .order_by(IssueFinding.created_at.desc()).limit(50))
+        rows = (await db.execute(q)).scalars().all()
+    return {
+        "count": len(rows),
+        "findings": [
+            {"id": f.id, "type": f.finding_type, "status": f.status,
+             "content": f.content, "proposal": f.proposal,
+             "created_at": f.created_at.isoformat()}
             for f in rows
         ],
     }
@@ -126,6 +146,20 @@ async def review_finding(finding_id: str, req: ReviewRequest):
                     )
                     db.add(link)
                     executed = {"event_id": ev.id, "linked": True}
+                elif p.get("action") == "add_source":
+                    # 源准入: 建库记录进管道（下轮 fetch 生效）
+                    from ..models import Source
+                    tier = p.get("tier") if p.get("tier") in (1, 2, 3, 4) else 4
+                    src = Source(
+                        id=_new_id("SRC"), name=str(p.get("name", ""))[:100],
+                        url=str(p.get("url", "")), type="rss",
+                        credibility_tier=tier, status="active",
+                        config={"credibility_manual": True,
+                                "admitted_via": "propose_source",
+                                "admit_reason": p.get("reason", "")},
+                    )
+                    db.add(src)
+                    executed = {"source_id": src.id, "name": src.name, "tier": tier}
         else:
             f.status = "rejected"
 
@@ -169,6 +203,7 @@ async def analyst_status():
     return {
         "embedded_ready": a.ready,
         "error": a.error,
+        "mcp_tools": getattr(a, "mcp_tools_connected", False),
         "http_tianshu": bool(settings.tianshu_base_url),
         "engine": "embedded" if a.ready else ("http" if settings.tianshu_base_url else "rule"),
     }

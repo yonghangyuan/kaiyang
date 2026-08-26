@@ -182,7 +182,7 @@ TOOLS: list[dict[str, Any]] = [
             "type": "object",
             "properties": {
                 "name": {"type": "string", "description": "标注名称"},
-                "coordinates": {"description": "坐标: 点→[lat,lng], 折线→[[lat,lng],...]"},
+                "coordinates": {"type": "array", "items": {"type": ["number", "array"]}, "description": "坐标: 点→[lat,lng], 折线→[[lat,lng],...]"},
                 "annotation_type": {"type": "string", "description": "point 或 polyline", "default": "polyline"},
             },
             "required": ["name", "coordinates"],
@@ -276,6 +276,96 @@ TOOLS: list[dict[str, Any]] = [
                 "type": {"type": "string"},
                 "name": {"type": "string"},
                 "country_code": {"type": ["string", "null"]},
+            })),
+        }),
+    },
+    # ── 自主情报官闭环工具 (2026-08-26) ─────────────────────────
+    {
+        "name": "create_watch_issue",
+        "description": "创建专题并开启自动追踪（订阅关键词 + 6h 批处理分析）。自主情报官开新专题的入口。",
+        "annotations": _WRITE,
+        "_outputBudgetBytes": SMALL_OUTPUT_BUDGET_BYTES,
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "title": {"type": "string", "description": "专题标题"},
+                "description": {"type": "string", "description": "专题说明（追踪什么/为什么）"},
+                "keywords": {"type": "string", "description": "订阅关键词（逗号分隔）。要求: 高特异词优先(地名/机构/装备名), 宽词(国家名)需配组合"},
+                "category": {"type": "string", "description": "geopolitical / conflict / disaster / economic", "default": "geopolitical"},
+            },
+            "required": ["title", "keywords"],
+        },
+        "outputSchema": _item({
+            "ok": {"type": "boolean"},
+            "issue_id": {"type": "string"},
+            "watch": {"type": "integer"},
+            "keywords": {"type": "string"},
+        }, required=["ok", "issue_id"]),
+    },
+    {
+        "name": "probe_source",
+        "description": "体检一个候选信源（RSS/API URL）: 可达性/feed合法性/新鲜度/语言/tier初判。坏源在准入前就被拦住。",
+        "annotations": _RO_OPEN,
+        "_outputBudgetBytes": SMALL_OUTPUT_BUDGET_BYTES,
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "url": {"type": "string", "description": "RSS feed URL"},
+            },
+            "required": ["url"],
+        },
+        "outputSchema": _item({
+            "url": {"type": "string"},
+            "verdict": {"type": "string", "description": "accept / reject"},
+            "reason": {"type": "string"},
+            "entries": {"type": ["integer", "null"]},
+            "latest_age_days": {"type": ["integer", "null"]},
+            "language": {"type": ["string", "null"]},
+            "tier_guess": {"type": ["integer", "null"]},
+        }, required=["verdict"]),
+    },
+    {
+        "name": "propose_source",
+        "description": "提交信源准入建议（进审批箱，人工批准后才进管道）。先 probe_source 体检再提交，报告一并附上。",
+        "annotations": _WRITE,
+        "_outputBudgetBytes": SMALL_OUTPUT_BUDGET_BYTES,
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "name": {"type": "string", "description": "源名称"},
+                "url": {"type": "string", "description": "RSS URL（须 probe accept）"},
+                "tier": {"type": "integer", "description": "建议可信层级 1-4"},
+                "reason": {"type": "string", "description": "为什么这个源值得收（一句话）"},
+                "issue_id": {"type": "string", "description": "关联专题（可选）"},
+            },
+            "required": ["name", "url", "reason"],
+        },
+        "outputSchema": _item({
+            "ok": {"type": "boolean"},
+            "finding_id": {"type": "string"},
+            "status": {"type": "string", "description": "pending 等人工批准"},
+        }, required=["ok", "status"]),
+    },
+    {
+        "name": "get_topic_brief",
+        "description": "拉专题全貌（关键词/池规模/事件链/近期发现），分析员接手专题时的上下文。",
+        "annotations": _RO,
+        "_outputBudgetBytes": LIST_OUTPUT_BUDGET_BYTES,
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "issue_id": {"type": "string", "description": "专题 ID；省略则返回全部追踪中专题摘要"},
+            },
+        },
+        "outputSchema": _item({
+            "issues": _arr(_item({
+                "id": {"type": "string"},
+                "title": {"type": "string"},
+                "watch": {"type": "integer"},
+                "keywords": {"type": "string"},
+                "pool_count": {"type": "integer"},
+                "chain_count": {"type": "integer"},
+                "recent_findings": {"type": "integer"},
             })),
         }),
     },

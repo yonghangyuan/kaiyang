@@ -16,6 +16,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import os
 import sys
 from pathlib import Path
@@ -85,6 +86,47 @@ class EmbeddedAnalyst:
             # db 分区: 开阳侧独立审计库, 不写天枢主库
             self.core.setup(registry=registry, routing=routing, system_prompt=soul,
                             db_path=str(Path(__file__).resolve().parents[2] / "backups" / "analyst_audit.db"))
+            # 自主情报官: 把开阳自己的 MCP 工具接进分析员的工具箱
+            # (进程内 HTTP 回环——复用输出纪律层, 天枢 McpClientManager 编程式连接)
+            # MCP SDK 的 Client 持有 anyio cancel scope——连接必须由一个常驻 task
+            # 建立并持有, 不能每次 run() 跨 task 重连(否则 cancel scope 跨 task 炸)。
+            try:
+                from tianshu.renyao.mcp_client import McpClientManager
+                self.core._mcp = McpClientManager()
+                self.core._mcp._registry = self.core._tool_registry
+                self.core._mcp_pending_connect = {
+                    "kaiyang": {
+                        "transport": "http",
+                        "url": "http://127.0.0.1:8721/mcp",
+                    },
+                }
+                # 常驻 task: 事件循环起来后立即连接并持有(15s 后试, 避开启动高峰)
+                async def _connect_and_hold():
+                    await asyncio.sleep(15)
+                    try:
+                        await self.core._mcp.connect_all(
+                            self.core._mcp_pending_connect, self.core._tool_registry)
+                        self.core._mcp_pending_connect = {}  # 已连, 防 run() 重连
+                        # 工具清单注入系统提示(与天枢 run() 内同款逻辑)
+                        try:
+                            self.core._context_engine.system_prompt = (
+                                (self.core._context_engine.system_prompt or "")
+                                + self.core._build_mcp_tools_section())
+                        except Exception:
+                            pass
+                        self.mcp_tools_connected = True
+                    except Exception as e:
+                        self.error = f"MCP 连接失败(纯分析模式): {str(e)[:100]}"
+
+                try:
+                    loop = asyncio.get_running_loop()
+                except RuntimeError:
+                    loop = None
+                if loop:
+                    loop.create_task(_connect_and_hold())
+                # 没有 running loop(测试环境同步 boot)时跳过——run() 时走纯分析
+            except Exception as e:
+                self.error = f"MCP 接入失败(降级为纯分析): {str(e)[:100]}"
             self.ready = True
             return True
         except Exception as e:
@@ -101,10 +143,14 @@ class EmbeddedAnalyst:
                 input=prompt, session_id=session_id, task_type="analysis",
             ))
             if resp.error:
+                self.error = f"resp.error: {resp.error[:150]}"
                 return None
-            return resp.content or None
+            if not resp.content:
+                self.error = "empty content"
+                return None
+            return resp.content
         except Exception as e:
-            self.error = str(e)[:200]
+            self.error = f"exception: {str(e)[:150]}"
             return None
 
 
