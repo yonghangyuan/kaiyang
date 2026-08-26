@@ -149,6 +149,16 @@ async def manual_analyze(issue_id: str):
     return {"ok": True, **stats}
 
 
+# ── 突增检测 ──────────────────────────────────────────────────
+
+@router.get("/spikes")
+async def keyword_spikes():
+    """当前关键词突增（2h vs 7d 基线, 3× 倍率, ≥2 源多样性门）。"""
+    from ..pipeline.spike_detector import detect_spikes
+    spikes = await detect_spikes()
+    return {"count": len(spikes), "spikes": spikes}
+
+
 # ── 分析员状态 ────────────────────────────────────────────────
 
 @router.get("/analyst/status")

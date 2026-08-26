@@ -175,6 +175,20 @@ class IntelFetcher:
         except Exception:
             self._stats["events_created"] = 0
 
+        # 关键词突增检测（危机预警; 失败不管道）
+        try:
+            from .spike_detector import detect_spikes
+            for spike in await detect_spikes():
+                await self._broadcast({
+                    "type": "keyword_spike",
+                    "level": "warning",
+                    "body": f"突增: 「{spike['term']}」 2h内{spike['recent']}条 "
+                            f"({spike['multiplier']}×基线, {spike['sources']}源)",
+                    **spike,
+                })
+        except Exception:
+            pass
+
         # 后台刮削完整文章内容（不阻塞管道）
         if source_types is None or "rss" in source_types:
             asyncio.create_task(self._scrape_full_content())
