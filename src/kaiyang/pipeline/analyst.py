@@ -9,17 +9,35 @@
   - 模型路由复用天枢 routing (分析任务自动选 reasoning 模型)
 
 降级链: 进程内分析员 → HTTP 天枢(服务器实例) → 规则兜底(issue_analyzer)
+
+部署差异: 天枢源码路径本地 Windows F:/tianshu/src, 服务器 Ubuntu
+~/tianshu/src —— 用 KAIYANG_TIANSHU_SRC 环境变量切换, 缺省依次探测。
 """
 
 from __future__ import annotations
 
+import os
 import sys
 from pathlib import Path
 
 from ..config import settings
 
-# 天枢源码路径 (进程内 import)
-TIANSHU_SRC = Path("F:/tianshu/src")
+# 天枢源码路径: 环境变量优先, 否则探测常见位置
+_FALLBACK_TIANSHU_SRCS = [
+    "F:/tianshu/src",          # 本地 Windows
+    str(Path.home() / "tianshu" / "src"),   # 服务器 Ubuntu ~/tianshu/src
+]
+
+
+def _resolve_tianshu_src() -> Path | None:
+    env = os.environ.get("KAIYANG_TIANSHU_SRC")
+    if env and Path(env).is_dir():
+        return Path(env)
+    for p in _FALLBACK_TIANSHU_SRCS:
+        if Path(p).is_dir():
+            return Path(p)
+    return None
+
 
 _analyst = None  # 单例
 
@@ -37,8 +55,12 @@ class EmbeddedAnalyst:
         if self.ready:
             return True
         try:
-            if str(TIANSHU_SRC) not in sys.path:
-                sys.path.insert(0, str(TIANSHU_SRC))
+            tianshu_src = _resolve_tianshu_src()
+            if tianshu_src is None:
+                self.error = "tianshu 源码不可达 (设 KAIYANG_TIANSHU_SRC)"
+                return False
+            if str(tianshu_src) not in sys.path:
+                sys.path.insert(0, str(tianshu_src))
             from tianshu.core.service import AgentCore
             from tianshu.core.config import load_providers, load_routing_config
             from tianshu.core.setup import load_user_keys
