@@ -146,3 +146,150 @@ async def manual_analyze(issue_id: str):
             raise HTTPException(400, "专题未开启追踪")
     stats = await analyze_issue(issue)
     return {"ok": True, **stats}
+
+
+# ── 时间链视图 ────────────────────────────────────────────────
+
+@router.get("/issues/{issue_id}/timeline")
+async def issue_timeline(issue_id: str, limit: int = 150):
+    """专题时间链：最新→最旧，从上到下展开。
+
+    合并三路条目为统一节点流:
+      - chain:  事件链上的事件（已审批的结构层）
+      - intel:  专题池条目（原文报道层）
+      - note:   调研发现笔记（分析层, 含待审 chain 建议）
+    每个节点带 sources[]（点开弹窗展示的源报道）。
+    """
+    from ..models import Event, IntelItem, IssueEvent, Source
+
+    async with async_session() as db:
+        r = await db.execute(select(Issue).where(Issue.id == issue_id))
+        issue = r.scalar_one_or_none()
+        if not issue:
+            raise HTTPException(404, "Issue 不存在")
+
+        nodes: list[dict] = []
+
+        # 1) 事件链节点
+        chains = (await db.execute(
+            select(IssueEvent, Event)
+            .join(Event, IssueEvent.event_id == Event.id)
+            .where(IssueEvent.issue_id == issue_id)
+            .order_by(Event.time_start.desc())
+        )).all()
+        for link, evt in chains:
+            nodes.append({
+                "kind": "chain",
+                "id": f"chain-{evt.id}",
+                "title": evt.title,
+                "time": evt.time_start.isoformat() if evt.time_start else "",
+                "relation": link.relation,
+                "severity": evt.severity,
+                "sources": [],
+            })
+
+        # 2) 专题池条目（原始报道）
+        pool = await get_pool_intels(issue_id, since=None, limit=min(limit, 300))
+        src_ids = {i.source_id for i in pool}
+        src_names = {}
+        if src_ids:
+            rs = await db.execute(select(Source).where(Source.id.in_(src_ids)))
+            src_names = {s.id: s.name for s in rs.scalars()}
+        for it in pool:
+            nodes.append({
+                "kind": "intel",
+                "id": f"intel-{it.id}",
+                "title": it.title,
+                "time": (it.published_at or it.fetched_at).isoformat(),
+                "source": src_names.get(it.source_id, it.source_id),
+                "url": it.url,
+                "sources": [{
+                    "title": it.title,
+                    "url": it.url,
+                    "source": src_names.get(it.source_id, it.source_id),
+                    "time": (it.published_at or it.fetched_at).isoformat(),
+                    "summary": (it.content or "")[:300],
+                }],
+            })
+
+        # 3) 调研发现
+        finds = (await db.execute(
+            select(IssueFinding)
+            .where(IssueFinding.issue_id == issue_id)
+            .order_by(IssueFinding.created_at.desc())
+            .limit(100)
+        )).scalars().all()
+        for f in finds:
+            nodes.append({
+                "kind": "finding",
+                "id": f"find-{f.id}",
+                "title": f.content,
+                "time": f.created_at.isoformat() if f.created_at else "",
+                "finding_type": f.finding_type,
+                "status": f.status,
+                "proposal": f.proposal,
+                "sources": [],  # 弹窗时按 evidence_ids 现查
+            })
+
+        # 最新→最旧
+        nodes.sort(key=lambda n: n.get("time") or "", reverse=True)
+        return {
+            "issue": {"id": issue.id, "title": issue.title, "watch": issue.watch or 0},
+            "count": len(nodes),
+            "nodes": nodes[:limit],
+        }
+
+
+@router.get("/findings/{finding_id}/sources")
+async def finding_sources(finding_id: str):
+    """finding 节点的源报道（按 evidence_ids 回查 intel 全文）。"""
+    from ..models import IntelItem, Source
+
+    async with async_session() as db:
+        r = await db.execute(select(IssueFinding).where(IssueFinding.id == finding_id))
+        f = r.scalar_one_or_none()
+        if not f:
+            raise HTTPException(404, "Finding 不存在")
+        ids = list(f.evidence_ids or [])[:20]
+        if not ids:
+            return {"count": 0, "sources": []}
+        items = (await db.execute(select(IntelItem, Source)
+                                  .join(Source, IntelItem.source_id == Source.id)
+                                  .where(IntelItem.id.in_(ids)))).all()
+        return {
+            "count": len(items),
+            "sources": [{
+                "title": it.title,
+                "url": it.url,
+                "source": s.name,
+                "time": (it.published_at or it.fetched_at).isoformat(),
+                "summary": (it.content or "")[:500],
+            } for it, s in items],
+        }
+
+
+@router.get("/events/{event_id}/sources")
+async def event_sources(event_id: str):
+    """chain 节点的源报道（event.source_items 里的 intel id 回查）。"""
+    from ..models import IntelItem, Source
+
+    async with async_session() as db:
+        evt = await db.get(Event, event_id)
+        if not evt:
+            raise HTTPException(404, "Event 不存在")
+        ids = [i for i in (evt.source_items or []) if isinstance(i, str)][:20]
+        if not ids:
+            return {"count": 0, "sources": []}
+        items = (await db.execute(select(IntelItem, Source)
+                                  .join(Source, IntelItem.source_id == Source.id)
+                                  .where(IntelItem.id.in_(ids)))).all()
+        return {
+            "count": len(items),
+            "sources": [{
+                "title": it.title,
+                "url": it.url,
+                "source": s.name,
+                "time": (it.published_at or it.fetched_at).isoformat(),
+                "summary": (it.content or "")[:500],
+            } for it, s in items],
+        }
