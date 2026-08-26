@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState, useMemo } from 'react'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 
@@ -12,10 +12,27 @@ interface Props { events: GeoPoint[]; searchResults: GeoPoint[]; annotations: An
 export default function MapView({ events, searchResults, annotations, chain, flyTo, topicLayers = [], activeTopics = [], onToggleTopic }: Props) {
   const mapRef = useRef<L.Map | null>(null)
   const groupsRef = useRef<Record<string, L.LayerGroup>>({})
+  // ── 时间轴回放 (2026-08-26): 滑块拖动 → 只显示该日期前(含)的事件 ──
+  const [timeCursor, setTimeCursor] = useState<number | null>(null)  // epoch ms; null=全部
+  const [showTimeline, setShowTimeline] = useState(false)
+
+  const timeBounds = useMemo(() => {
+    const ts = events.map(e => new Date(e.time_start || e.published_at || '').getTime()).filter(t => !isNaN(t))
+    if (!ts.length) return null
+    return { min: Math.min(...ts), max: Math.max(...ts) }
+  }, [events])
+
+  const visibleEvents = useMemo(() => {
+    if (timeCursor === null || !timeBounds) return events
+    return events.filter(e => {
+      const t = new Date(e.time_start || e.published_at || '').getTime()
+      return isNaN(t) || t <= timeCursor
+    })
+  }, [events, timeCursor, timeBounds])
 
   // Separate events by type
-  const earthquakeEvents = events.filter(e => e.title?.toLowerCase().includes('earthquake') || e.title?.toLowerCase().includes('magnitude'))
-  const otherEvents = events.filter(e => !earthquakeEvents.includes(e))
+  const earthquakeEvents = visibleEvents.filter(e => e.title?.toLowerCase().includes('earthquake') || e.title?.toLowerCase().includes('magnitude'))
+  const otherEvents = visibleEvents.filter(e => !earthquakeEvents.includes(e))
 
   useEffect(() => {
     if (mapRef.current) return
@@ -238,6 +255,54 @@ export default function MapView({ events, searchResults, annotations, chain, fly
           </label>
         ))}
       </div>
+
+      {/* 时间轴回放条 */}
+      <div style={{ position: 'absolute', left: 10, bottom: 28, zIndex: 1000, display: 'flex', gap: 6 }}>
+        <button
+          onClick={() => { setShowTimeline(v => !v); if (showTimeline) setTimeCursor(null) }}
+          style={{
+            background: 'var(--bg-card)', border: '1px solid var(--border)', color: 'var(--fg)',
+            padding: '4px 10px', borderRadius: 4, fontSize: 12, cursor: 'pointer',
+          }}
+        >
+          {showTimeline ? '✕ 时间轴' : '⏱ 时间轴'}
+        </button>
+      </div>
+      {showTimeline && timeBounds && (
+        <div style={{
+          position: 'absolute', left: 10, bottom: 56, zIndex: 1000,
+          background: 'rgba(15,23,42,0.94)', borderRadius: 8, padding: '8px 12px',
+          border: '1px solid #334155', width: 320,
+        }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: '#94a3b8', marginBottom: 4 }}>
+            <span>{new Date(timeBounds.min).toLocaleDateString('zh-CN')}</span>
+            <span style={{ color: '#e2c860', fontWeight: 700 }}>
+              {timeCursor === null ? '全部' : new Date(timeCursor).toLocaleDateString('zh-CN', { month: '2-digit', day: '2-digit' })}
+              {' '}({visibleEvents.length}/{events.length} 事件)
+            </span>
+            <span>{new Date(timeBounds.max).toLocaleDateString('zh-CN')}</span>
+          </div>
+          <input
+            type="range"
+            min={timeBounds.min}
+            max={timeBounds.max}
+            step={24 * 3600 * 1000}
+            value={timeCursor ?? timeBounds.max}
+            onChange={e => setTimeCursor(Number(e.target.value))}
+            style={{ width: '100%', accentColor: '#e2c860', cursor: 'pointer' }}
+          />
+          <div style={{ display: 'flex', gap: 6, marginTop: 6 }}>
+            <button
+              onClick={() => setTimeCursor(timeBounds.max)}
+              style={{ flex: 1, background: '#1d4ed8', border: 'none', color: '#fff', padding: '3px 0', borderRadius: 4, fontSize: 11, cursor: 'pointer' }}
+            >拉满</button>
+            <button
+              onClick={() => setTimeCursor(null)}
+              style={{ flex: 1, background: '#475569', border: 'none', color: '#fff', padding: '3px 0', borderRadius: 4, fontSize: 11, cursor: 'pointer' }}
+            >关闭过滤</button>
+          </div>
+        </div>
+      )}
     </>
   )
 }
