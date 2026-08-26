@@ -354,6 +354,31 @@ async def sse_endpoint():
     )
 
 
+@app.get("/api/pipeline/stream")
+async def pipeline_stream():
+    """管道事件 SSE 流——订阅即回放 500 条缓冲（FetchingMonitor 用）。"""
+    async def stream():
+        from .pipeline.event_bus import subscribe, unsubscribe
+        q = await subscribe()
+        try:
+            while True:
+                try:
+                    data = await asyncio.wait_for(q.get(), timeout=15.0)
+                    yield f"data: {_json_lib.dumps(data, ensure_ascii=False)}\n\n"
+                except asyncio.TimeoutError:
+                    yield ": heartbeat\n\n"
+        except asyncio.CancelledError:
+            pass
+        finally:
+            unsubscribe(q)
+
+    return _StreamingResponse(
+        stream(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
 # ── WebSocket (保留兼容) ──────────────────────────────────────
 
 from fastapi import WebSocket, WebSocketDisconnect

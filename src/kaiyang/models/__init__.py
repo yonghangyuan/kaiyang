@@ -220,6 +220,30 @@ class IssueFinding(Base):
         return f"<IssueFinding {self.id} [{self.finding_type}/{self.status}]>"
 
 
+# ── 管道运行历史（可观测性, 2026-08-26）────────────────────────
+
+class CrawlEvent(Base):
+    """抓取运行历史——每次 fetch 一行, 运维审计的金矿。
+
+    由 event_bus.record_run 写入（旁路, 失败静默不反噬管道）。
+    """
+    __tablename__ = "crawl_events"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    ts = Column(DateTime(timezone=True), default=_utcnow, index=True)
+    source_id = Column(String(64), index=True)
+    source_name = Column(String(256))
+    fetched = Column(Integer, default=0)      # 抓到的原始条数
+    stored = Column(Integer, default=0)       # 新入库条数
+    ok = Column(Integer, default=1)           # 1 成功 0 失败
+    error = Column(String(500))
+    elapsed_ms = Column(Integer, default=0)
+    kind = Column(String(32), default="fetch")  # fetch / spike / freshness / watch
+
+    def __repr__(self) -> str:
+        return f"<CrawlEvent {self.source_name} {'ok' if self.ok else 'FAIL'}>"
+
+
 # ── 实体 ─────────────────────────────────────────────────────────
 
 class Entity(Base):

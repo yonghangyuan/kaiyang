@@ -133,6 +133,7 @@ class IntelFetcher:
             return self._stats
 
         for source_record in sources:
+            t0 = time.monotonic()
             try:
                 # 查找对应的数据源实现
                 source_cls = get_source_class(source_record.type)
@@ -161,9 +162,25 @@ class IntelFetcher:
                 except Exception:
                     pass
 
+                # 运行历史 + 事件总线（旁路失败不管道）
+                try:
+                    from .event_bus import record_run
+                    await record_run(source_record.id, source_record.name,
+                                     len(items), stored, ok=True,
+                                     elapsed_ms=int((time.monotonic() - t0) * 1000))
+                except Exception:
+                    pass
+
             except Exception as e:
                 self._stats["errors"] += 1
                 await record_fetch_error(source_record.id, str(e))
+                try:
+                    from .event_bus import record_run
+                    await record_run(source_record.id, source_record.name,
+                                     0, 0, ok=False, error=str(e),
+                                     elapsed_ms=int((time.monotonic() - t0) * 1000))
+                except Exception:
+                    pass
 
         # 自动聚合事件
         try:

@@ -8,6 +8,7 @@ import BriefingCard from './BriefingCard'
 import LiveFeed from './LiveFeed'
 import EntityProfile from './EntityProfile'
 import WatchPanel from './WatchPanel'
+import FetchingMonitor from './FetchingMonitor'
 
 interface Briefing { query: string; summary: string; point_count: number; timeline_count: number; web_count?: number; points: any[]; timeline: any[] }
 
@@ -64,7 +65,7 @@ export default function Sidebar({ briefing, chatMessages, onSearch, onChat, stat
           profileEntity
             ? <EntityProfile entityId={profileEntity} onClose={() => setProfileEntity(null)} />
             : <>
-                <BriefingCard /><ThreatDashboard /><WordCloud /><TrendChart /><PredictionCard />
+                <FetchingMonitor /><BriefingCard /><ThreatDashboard /><WordCloud /><TrendChart /><PredictionCard />
                 {graphEntity && <EntityGraph entityId={graphEntity} onClose={() => setGraphEntity(null)} />}
               </>
         )}

@@ -47,9 +47,14 @@ JSON:"""
                     if line.startswith("{") and line.endswith("}"):
                         try:
                             result = _json.loads(line)
+                            threat = result.get("threat", "info")
+                            # 安全带: LLM 威胁等级最多比关键词基线升 2 级（防幻觉升级）
+                            from .classify_guard import cap_llm_level
+                            threat, capped = cap_llm_level(threat, text)
                             return {
                                 "topic": result.get("topic", "other"),
-                                "threat": result.get("threat", "info"),
+                                "threat": threat,
+                                "threat_capped": capped,  # 审计: 被夹过的标记
                                 "sentiment": float(result.get("sentiment", 0)),
                                 "summary": result.get("summary", "")[:200],
                             }

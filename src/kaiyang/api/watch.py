@@ -21,6 +21,10 @@ from ..pipeline.issue_router import get_pool_intels
 
 router = APIRouter(prefix="/api", tags=["watch"])
 
+# severity(1-10) ↔ 威胁五级 的映射（安全带用）
+_LEVELS_BY_SEV = {1: "info", 2: "info", 3: "low", 4: "low", 5: "medium",
+                  6: "medium", 7: "high", 8: "high", 9: "critical", 10: "critical"}
+
 
 class WatchToggle(BaseModel):
     on: bool
@@ -127,13 +131,20 @@ async def review_finding(finding_id: str, req: ReviewRequest):
             if f.finding_type == "chain" and f.proposal:
                 p = f.proposal
                 if p.get("action") == "create_event":
+                    # 安全带: LLM 建议的事件 severity 夹在关键词基线+2 内
+                    from ..pipeline.classify_guard import cap_llm_level
+                    raw_sev = int(p.get("severity", 6) or 6)
+                    llm_level = _LEVELS_BY_SEV.get(raw_sev, "medium")
+                    evidence = f"{p.get('title', '')} {p.get('evidence', '')}"
+                    capped_level, _ = cap_llm_level(llm_level, evidence)
+                    final_sev = {"info": 2, "low": 3, "medium": 5, "high": 7, "critical": 9}[capped_level]
                     ev = Event(
                         id=_new_id("EV"),
                         title=str(p.get("title", f.content[:50])),
                         description=f.content,
                         event_type="conflict",
                         time_start=_utcnow(),
-                        severity=6,
+                        severity=final_sev,
                         source_items=[],
                     )
                     db.add(ev)
@@ -145,7 +156,9 @@ async def review_finding(finding_id: str, req: ReviewRequest):
                         evidence=p.get("evidence", ""),
                     )
                     db.add(link)
-                    executed = {"event_id": ev.id, "linked": True}
+                    executed = {"event_id": ev.id, "linked": True,
+                                "severity": final_sev,
+                                **({"severity_capped_from": raw_sev} if final_sev != raw_sev else {})}
                 elif p.get("action") == "add_source":
                     # 源准入: 建库记录进管道（下轮 fetch 生效）
                     from ..models import Source
@@ -181,6 +194,23 @@ async def manual_analyze(issue_id: str):
             raise HTTPException(400, "专题未开启追踪")
     stats = await analyze_issue(issue)
     return {"ok": True, **stats}
+
+
+# ── 管道可观测性 ──────────────────────────────────────────────
+
+@router.get("/pipeline/events")
+async def pipeline_events(limit: int = 100):
+    """管道事件（拉模式）。SSE 流走 /api/pipeline/stream。"""
+    from ..pipeline.event_bus import recent_events
+    events = recent_events(min(limit, 300))
+    return {"count": len(events), "events": events}
+
+
+@router.get("/pipeline/stats")
+async def pipeline_stats(hours: int = 24):
+    """近 N 小时管道运行统计。"""
+    from ..pipeline.event_bus import run_stats
+    return await run_stats(hours=min(hours, 168))
 
 
 # ── 突增检测 ──────────────────────────────────────────────────
