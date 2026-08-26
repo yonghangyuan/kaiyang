@@ -88,8 +88,17 @@ export default function WatchPanel() {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ approve, note: '' }),
     })
-    if (sel) loadTimeline(sel); setBusy(false)
+    if (sel) loadTimeline(sel)
+    loadIntake(); setBusy(false)
   }
+
+  // ── 源准入收件箱 ──────────────────────────────────────────
+  const [intake, setIntake] = useState<Finding[]>([])
+  const loadIntake = async () => {
+    const d = await fetchJ('/api/intake/pending')
+    setIntake(d?.findings || [])
+  }
+  useEffect(() => { loadIntake() }, [])
 
   const analyzeNow = async () => {
     if (!sel) return
@@ -127,6 +136,30 @@ export default function WatchPanel() {
         ))}
         {watching.length === 0 && <div style={{ color: 'var(--fg-dim)', marginTop: 6, fontSize: 11 }}>暂无。从下面列表开启</div>}
       </div>
+
+      {/* 源准入收件箱（自主补源的建议落这里） */}
+      {intake.length > 0 && (
+        <div style={{ ...S.sec, borderLeft: '3px solid var(--yellow)' }}>
+          <b style={{ fontSize: 10, color: 'var(--yellow)', letterSpacing: '0.05em' }}>
+            信源准入 {intake.length} 待审
+          </b>
+          {intake.map(f => (
+            <div key={f.id} style={{ marginTop: 8, padding: 8, borderRadius: 4, background: '#0d1330' }}>
+              <div style={{ display: 'flex', gap: 6, fontSize: 10, marginBottom: 4 }}>
+                <span style={{ color: 'var(--yellow)' }}>T{f.proposal?.tier ?? '?'}</span>
+                <span style={{ color: 'var(--fg-dim)', marginLeft: 'auto' }}>{f.created_at?.substring(5, 16)}</span>
+              </div>
+              <div style={{ fontSize: 12, fontWeight: 700 }}>{f.proposal?.name}</div>
+              <div style={{ fontSize: 10, color: '#60a5fa', wordBreak: 'break-all' }}>{f.proposal?.url}</div>
+              {f.proposal?.reason && <div style={{ fontSize: 11, color: 'var(--fg-dim)', marginTop: 2 }}>{f.proposal.reason}</div>}
+              <div style={{ display: 'flex', gap: 6, marginTop: 6 }}>
+                <button onClick={() => review(f.id, true)} disabled={busy} style={S.btn('#16a34a')}>批准入库</button>
+                <button onClick={() => review(f.id, false)} disabled={busy} style={S.btn('#ef4444')}>驳回</button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* 时间链 */}
       {sel && current && (
