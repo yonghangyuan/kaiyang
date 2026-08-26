@@ -154,6 +154,12 @@ class IntelFetcher:
                 self._stats["skipped"] += len(items) - stored
 
                 await record_fetch_success(source_record.id, len(items))
+                # 新鲜度/零产出记账（旁路失败不管道）
+                try:
+                    from .freshness import note_round_result
+                    await note_round_result(source_record.id, len(items), stored)
+                except Exception:
+                    pass
 
             except Exception as e:
                 self._stats["errors"] += 1
@@ -186,6 +192,15 @@ class IntelFetcher:
                             f"({spike['multiplier']}×基线, {spike['sources']}源)",
                     **spike,
                 })
+        except Exception:
+            pass
+
+        # 新鲜度扫描（no_data/frozen 标记; 失败不管道）
+        try:
+            from .freshness import scan_freshness
+            fresh = await scan_freshness()
+            if fresh.get("frozen") or fresh.get("no_data"):
+                self._stats["freshness"] = fresh
         except Exception:
             pass
 
