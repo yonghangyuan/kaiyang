@@ -37,18 +37,24 @@ MAX_ITEMS_PER_ISSUE = 40
 
 
 async def _tianshu_analyze(issue: Issue, items: list[dict]) -> list[dict] | None:
-    """调天枢分析专题增量。返回 findings 列表或 None（失败）。"""
-    if not settings.tianshu_base_url:
-        return None
+    """调天枢分析专题增量。返回 findings 列表或 None（失败）。
 
+    降级链 (2026-08-26): 进程内分析员(嵌入式 AgentCore, 情报特化 soul)
+    → HTTP 天枢(服务器实例) → None(规则兜底)。
+    """
     digest = "\n".join(
         f"- [{it['published'][:16]}] {it['title']} ({it['source']})"
         for it in items[:MAX_ITEMS_PER_ISSUE]
     )
 
-    prompt = f"""你是情报分析师。专题「{issue.title}」近 6 小时新增 {len(items)} 条情报:
+    # 喂上一轮 findings 摘要——保持专题分析连续性（分析员 soul 里的要求）
+    recent_notes = await _recent_findings_digest(issue.id)
+
+    prompt = f"""专题「{issue.title}」本轮新增 {len(items)} 条情报:
 
 {digest}
+
+{recent_notes}
 
 请输出 JSON 数组（不要其他文字），每项代表一条调研发现:
 [
@@ -63,20 +69,34 @@ async def _tianshu_analyze(issue: Issue, items: list[dict]) -> list[dict] | None
 - 宁缺毋滥: 没有值得记的就输出 []
 - 只输出 JSON 数组本身"""
 
+    content = None
+
+    # 1) 进程内分析员（嵌入式天枢, 独立情报 soul）
     try:
-        headers = {}
-        if settings.tianshu_token:
-            headers["Authorization"] = f"Bearer {settings.tianshu_token}"
-        async with httpx.AsyncClient(timeout=60) as client:
-            resp = await client.post(
-                f"{settings.tianshu_base_url}/run",
-                json={"input": prompt, "session_id": f"kaiyang-watch-{issue.id}"},
-                headers=headers,
-            )
-            if resp.status_code != 200:
-                return None
-            content = resp.json().get("content", "")
+        from .analyst import get_analyst
+        analyst = get_analyst()
+        content = await analyst.run(prompt, session_id=f"kaiyang-watch-{issue.id}")
     except Exception:
+        content = None
+
+    # 2) HTTP 天枢（服务器实例）
+    if content is None and settings.tianshu_base_url:
+        try:
+            headers = {}
+            if settings.tianshu_token:
+                headers["Authorization"] = f"Bearer {settings.tianshu_token}"
+            async with httpx.AsyncClient(timeout=60) as client:
+                resp = await client.post(
+                    f"{settings.tianshu_base_url}/run",
+                    json={"input": prompt, "session_id": f"kaiyang-watch-{issue.id}"},
+                    headers=headers,
+                )
+                if resp.status_code == 200:
+                    content = resp.json().get("content", "") or None
+        except Exception:
+            content = None
+
+    if not content:
         return None
 
     # 从回复里抠 JSON 数组（LLM 可能裹 markdown 代码块）
@@ -90,6 +110,22 @@ async def _tianshu_analyze(issue: Issue, items: list[dict]) -> list[dict] | None
     except json.JSONDecodeError:
         pass
     return None
+
+
+async def _recent_findings_digest(issue_id: str, limit: int = 5) -> str:
+    """上轮 findings 摘要——让分析有连续性。"""
+    async with async_session() as db:
+        r = await db.execute(
+            select(IssueFinding)
+            .where(IssueFinding.issue_id == issue_id, IssueFinding.finding_type == "note")
+            .order_by(IssueFinding.created_at.desc())
+            .limit(limit)
+        )
+        notes = r.scalars().all()
+    if not notes:
+        return ""
+    lines = [f"- {n.content[:80]}" for n in reversed(notes)]
+    return "上轮分析笔记（保持连续性, 接上话头）:\n" + "\n".join(lines)
 
 
 def _rule_fallback(issue: Issue, items: list[dict]) -> list[dict]:

@@ -13,6 +13,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from sqlalchemy import select
 
+from ..config import settings
 from ..db import async_session
 from ..models import Event, Issue, IssueEvent, IssueFinding, _new_id, _utcnow
 from ..pipeline.issue_analyzer import analyze_issue
@@ -146,6 +147,21 @@ async def manual_analyze(issue_id: str):
             raise HTTPException(400, "专题未开启追踪")
     stats = await analyze_issue(issue)
     return {"ok": True, **stats}
+
+
+# ── 分析员状态 ────────────────────────────────────────────────
+
+@router.get("/analyst/status")
+async def analyst_status():
+    """嵌入式分析员状态（诊断用）。"""
+    from ..pipeline.analyst import get_analyst
+    a = get_analyst()
+    return {
+        "embedded_ready": a.ready,
+        "error": a.error,
+        "http_tianshu": bool(settings.tianshu_base_url),
+        "engine": "embedded" if a.ready else ("http" if settings.tianshu_base_url else "rule"),
+    }
 
 
 # ── 时间链视图 ────────────────────────────────────────────────

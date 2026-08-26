@@ -153,6 +153,14 @@ async def lifespan(app: FastAPI):
     from .pipeline.issue_analyzer import watch_scheduler
     asyncio.create_task(watch_scheduler.start())
 
+    # 嵌入式天枢分析员（进程内 AgentCore, 情报特化 soul; 失败走降级链不阻塞启动）
+    async def _boot_analyst():
+        from .pipeline.analyst import get_analyst
+        ok = get_analyst().boot()
+        print(f"[开阳] 情报分析员(嵌入式天枢): {'就绪' if ok else '未就绪→走HTTP/兜底'}"
+              + (f" ({get_analyst().error})" if not ok and get_analyst().error else ""))
+    asyncio.create_task(_boot_analyst())
+
     # FTS5 索引同步（等首批数据入库后执行）
     async def _init_fts():
         await asyncio.sleep(5)
