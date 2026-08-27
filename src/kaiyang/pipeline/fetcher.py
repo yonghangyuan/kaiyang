@@ -256,6 +256,25 @@ class IntelFetcher:
         if not items:
             return 0
 
+        # URL 信任门（对标 Redroom referenceChecker）: 无效 URL 拦截，有效 URL 写信任分
+        from .url_trust import check_url
+        rejected = []
+        valid_items = []
+        for item in items:
+            verdict = check_url(item.url)
+            if not verdict["valid"]:
+                rejected.append({"title": (item.title or "")[:50], "url": (item.url or "")[:100], "reason": verdict["reason"]})
+                continue
+            raw = item.raw_data or {}
+            raw["url_trust"] = verdict["score"]
+            item.raw_data = raw
+            valid_items.append(item)
+        if rejected:
+            self._stats["url_rejected"] = self._stats.get("url_rejected", 0) + len(rejected)
+        items = valid_items
+        if not items:
+            return 0
+
         # 自动地理标注
         for item in items:
             await geocode_item(item)

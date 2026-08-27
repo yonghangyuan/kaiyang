@@ -5,6 +5,14 @@
   - 事件严重度
   - 设施威胁等级
   - 源多样性
+
+地板机制（对标 WM CII v8, get-risk-scores.ts:1196-1240）:
+  结构性事实（不随新闻热度波动）托底分数下限——
+  新闻淡出≠威胁消失。地板只抬不压:
+    - 活跃战争状态 (7天内有 severity>=9 事件) → 不得低于 4
+    - 高烈度冲突 (7天内有 severity>=7 事件) → 不得低于 3
+    - 核设施/大规模军事存在 (设施 threat_level>=5) → 不得低于 3
+  methodology_version 写进每个分数，客户端可检测公式漂移。
 """
 
 from __future__ import annotations
@@ -16,6 +24,9 @@ from ..db import async_session
 
 THREAT_LABELS = {1: "NORMAL", 2: "ELEVATED", 3: "GUARDED", 4: "HIGH", 5: "CRITICAL"}
 THREAT_COLORS = {1: "#22c55e", 2: "#eab308", 3: "#f97316", 4: "#ef4444", 5: "#7f1d1d"}
+
+# 公式版本（每次改评分逻辑/权重/地板时递增）
+THREAT_METHODOLOGY_VERSION = "v2-floors"
 
 
 async def score_country_threat(country_code: str) -> dict:
@@ -58,6 +69,12 @@ async def score_country_threat(country_code: str) -> dict:
             {"cc": country_code},
         ) or 1
 
+        # 结构性事实: 7天内最高事件严重度（活跃冲突判定，区别于上面的均值）
+        event_max = await db.scalar(
+            text("SELECT MAX(severity) FROM events WHERE country_code=:cc AND time_start >= :since"),
+            {"cc": country_code, "since": since_7d},
+        ) or 0
+
     # 综合评分 1-5
     score = 1.0
     if article_count > 50: score += 1.0
@@ -69,7 +86,21 @@ async def score_country_threat(country_code: str) -> dict:
     if facility_max >= 5: score += 1.0
     elif facility_max >= 3: score += 0.5
 
-    level = min(5, max(1, round(score)))
+    raw_level = min(5, max(1, round(score)))
+
+    # 地板: 结构性事实托底（只抬不压）
+    # 活跃战争 (7天内有 severity>=9) → 4；高烈度冲突 (severity>=7) → 3；核/重军事存在 → 3
+    floors: list[dict] = []
+    if event_max >= 9:
+        floors.append({"source": "active_war", "level": 4, "evidence": f"max_event_severity_7d={event_max}"})
+    elif event_max >= 7:
+        floors.append({"source": "high_intensity_conflict", "level": 3, "evidence": f"max_event_severity_7d={event_max}"})
+    if facility_max >= 5:
+        floors.append({"source": "strategic_facilities", "level": 3, "evidence": f"max_facility_threat={facility_max}"})
+
+    floor_level = max([f["level"] for f in floors], default=1)
+    floored = raw_level < floor_level
+    level = max(raw_level, floor_level)
 
     return {
         "country": country_code,
@@ -80,8 +111,15 @@ async def score_country_threat(country_code: str) -> dict:
             "article_count_7d": article_count,
             "urgent_articles_24h": urgent_count,
             "avg_event_severity": round(event_sev, 1),
+            "max_event_severity_7d": event_max,
             "max_facility_threat": facility_max,
         },
+        "floor": {
+            "applied": floored,
+            "level": floor_level,
+            "sources": floors,
+        },
+        "methodology_version": THREAT_METHODOLOGY_VERSION,
         "assessed_at": now.isoformat(),
     }
 

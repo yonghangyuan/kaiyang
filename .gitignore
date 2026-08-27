@@ -14,5 +14,5 @@ build/
 venv/
 node_modules/
 reference/
-test_*.py
+test_*.py.orig
 backups/
