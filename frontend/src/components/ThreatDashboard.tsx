@@ -15,6 +15,11 @@ export default function ThreatDashboard() {
   if (loading) return <div style={{fontSize:11,color:'var(--fg-dim)',padding:8}}>评估中...</div>
 
   const labels: Record<number, string> = {1:'正常',2:'关注',3:'警戒',4:'高危',5:'危急'}
+  // 国家码显示名（ISO 3166 是技术编码；显示层按规范处理地区标注，与 LiveFeed/MapView 一致）
+  const COUNTRY_LABEL: Record<string, string> = {
+    TW: '中国台湾', HK: '中国香港', MO: '中国澳门',
+  }
+  const countryLabel = (c: string) => COUNTRY_LABEL[c] || c
 
   return (
     <div style={{background:'var(--bg-card)',border:'1px solid var(--border)',borderRadius:6,padding:10,marginTop:8}}>
@@ -22,7 +27,7 @@ export default function ThreatDashboard() {
       <div style={{display:'flex',flexDirection:'column',gap:4}}>
         {threats.slice(0, 12).map(t => (
           <div key={t.country} style={{display:'flex',alignItems:'center',gap:8,padding:'4px 6px',borderRadius:3,background:t.threat_level>=4?'rgba(239,68,68,0.05)':'transparent'}}>
-            <span style={{fontSize:10,fontWeight:700,fontFamily:'monospace',color:'var(--fg-dim)',width:24}}>{t.country}</span>
+            <span title={countryLabel(t.country)} style={{fontSize:10,fontWeight:700,fontFamily:'monospace',color:'var(--fg-dim)',width:24}}>{t.country}</span>
             <div style={{flex:1,height:4,background:'var(--bg)',borderRadius:2,overflow:'hidden'}}>
               <div style={{width:(t.threat_level/5*100)+'%',height:'100%',background:t.threat_color,borderRadius:2,transition:'width 0.5s'}} />
             </div>

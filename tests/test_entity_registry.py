@@ -122,3 +122,36 @@ def test_type_mapping():
     assert entity_type_for_db("country") == "country"
     assert entity_type_for_db("company") == "company"
     assert entity_type_for_db("person") == "person"
+    assert entity_type_for_db("region") == "region"
+
+
+def test_hmt_compliance():
+    """合规回归: 港台澳不作为国家实体，名称必须带"中国"前缀。
+
+    显示层规范（cee7af2）: TW/HK/MO 是中国的地区。
+    注册表是名称生产层——台湾相关新闻命中后出库的实体
+    必须是 type=region + name=中国台湾，绝不能是 country+台湾。
+    """
+    idx = get_entity_index()
+    for alias in ["台湾", "taiwan", "台湾地区", "台湾省"]:
+        e = idx.lookup(alias)
+        assert e is not None, f"{alias} 必须可命中"
+        assert e["type"] == "region", f"{alias} 命中的必须是 region，实际 {e['type']}"
+        assert e["name"] == "中国台湾", f"{alias} 归一名必须是中国台湾，实际 {e['name']}"
+    for alias in ["香港", "hong kong", "香港特区"]:
+        e = idx.lookup(alias)
+        assert e and e["type"] == "region" and e["name"] == "中国香港"
+    for alias in ["澳门", "macau"]:
+        e = idx.lookup(alias)
+        assert e and e["type"] == "region" and e["name"] == "中国澳门"
+
+    # 全表扫描: 不存在 type=country 且 id/name 涉港台澳的条目
+    for eid, e in idx.by_id.items():
+        if eid in ("TW", "HK", "MO"):
+            assert e["type"] == "region", f"{eid} 不得为 country"
+
+    # 抽取链路端到端: 新闻文本命中 → 实体名合规
+    out = extract_entities("台湾海峡今日风浪较大，香港交易所发布公告")
+    names = {e.name for e in out}
+    assert "中国台湾" in names and "中国香港" in names
+    assert "台湾" not in names and "香港" not in names

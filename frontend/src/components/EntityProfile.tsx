@@ -27,7 +27,7 @@ export default function EntityProfile({ entityId, onClose }: Props) {
   if (loading) return <div style={{padding:20,textAlign:'center',color:'var(--fg-dim)'}}>加载中...</div>
   if (!entity) return <div style={{padding:20,textAlign:'center',color:'var(--red)'}}>未找到实体</div>
 
-  const typeColors: Record<string, string> = { country: '#22c55e', institution: '#3b82f6', person: '#f97316', organization: '#a855f7' }
+  const typeColors: Record<string, string> = { country: '#22c55e', institution: '#3b82f6', person: '#f97316', organization: '#a855f7', region: '#14b8a6', company: '#eab308' }
 
   return (
     <div style={{fontSize:12}}>

@@ -40,7 +40,7 @@ SEED_DATA = [
     {"name":"上海港","type":"port","country":"CN","lat":31.35,"lng":121.60,"desc":"全球最大集装箱港口","operator":"SIPG","threat":1},
     {"name":"新加坡港","type":"port","country":"SG","lat":1.26,"lng":103.85,"desc":"全球第二大集装箱港口,马六甲海峡枢纽","operator":"PSA","threat":2},
     {"name":"釜山港","type":"port","country":"KR","lat":35.10,"lng":129.04,"desc":"韩国最大港口","operator":"BPA","threat":2},
-    {"name":"高雄港","type":"port","country":"TW","lat":22.61,"lng":120.28,"desc":"台湾最大国际商港","operator":"TIPC","threat":2},
+    {"name":"高雄港","type":"port","country":"TW","lat":22.61,"lng":120.28,"desc":"中国台湾最大国际商港","operator":"TIPC","threat":2},
     {"name":"霍尔木兹海峡","type":"chokepoint","country":"IR","lat":26.57,"lng":56.25,"desc":"全球1/3石油运输通道","operator":"-","threat":5},
     {"name":"马六甲海峡","type":"chokepoint","country":"SG","lat":1.43,"lng":103.85,"desc":"全球最繁忙航运通道","operator":"-","threat":3},
     {"name":"苏伊士运河","type":"chokepoint","country":"EG","lat":30.58,"lng":32.27,"desc":"亚欧航运生命线","operator":"SCA","threat":3},

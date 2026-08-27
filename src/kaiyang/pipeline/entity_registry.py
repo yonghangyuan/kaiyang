@@ -147,7 +147,7 @@ _MANUAL_REGISTRY: list[dict] = [
 
     # ── 科技公司（供应链/制裁线） ──
     {"id": "CO-TSMC", "type": "company", "name": "台积电",
-     "aliases": ["tsmc", "台积电", "台湾积体电路"], "keywords": ["芯片代工", "foundry"], "related": []},
+     "aliases": ["tsmc", "台积电", "台湾积体电路公司"], "keywords": ["芯片代工", "foundry"], "related": []},
     {"id": "CO-HUAWEI", "type": "company", "name": "华为",
      "aliases": ["huawei", "华为"], "keywords": ["5g", "制裁清单"], "related": []},
     {"id": "CO-NVIDIA", "type": "company", "name": "英伟达",
@@ -182,8 +182,8 @@ _COMPOUND_PAIRS: list[tuple[str, list[str]]] = [
     ("俄白", ["RU", "BY"]), ("中巴", ["CN", "BR"]), ("印巴", ["IN", "PK"]),
 ]
 
-# 注册表 type → Entity.type 映射（company 是开阳新类型）
-_TYPE_MAP = {"index": "institution", "company": "company"}
+# 注册表 type → Entity.type 映射（company/region 是开阳新类型）
+_TYPE_MAP = {"index": "institution", "company": "company", "region": "region"}
 
 
 # ── 索引编译（对标 buildEntityIndex） ─────────────────────────
@@ -260,11 +260,18 @@ def _build_country_entries() -> tuple[dict, ...]:
 
     判定法: 英文键且坐标/iso 与某中文键一致 → 国家主体，中文键即中文名。
     城市条目（北京/东京…）不进注册表——城市不是这里的实体粒度。
+
+    合规规则（与 cee7af2 显示层约定一致）:
+      TW/HK/MO 不是国家实体——不生成 type=country 的条目。
+      港台澳新闻抽取为 type=region 的地区实体（中国台湾/中国香港/中国澳门），
+      数据层 ISO 码保留为技术编码，名称层必须带"中国"前缀。
     """
     countries: dict[str, dict] = {}
     for en, (lat, lng, iso, cn) in COUNTRY_COORDS.items():
         if not en or not en[0].isascii() or not en[0].isupper():
             continue  # 中文键，由英文键侧收
+        if iso in ("TW", "HK", "MO"):
+            continue  # 港台澳不走国家编译，走下方地区条目
         # 找同 iso 同坐标的中文键 → 中文名
         cn_name = next(
             (k for k, (la, ln, i2, _cn) in COUNTRY_COORDS.items()
@@ -284,10 +291,21 @@ def _build_country_entries() -> tuple[dict, ...]:
     return tuple(countries.values())
 
 
+# 港台澳地区条目（合规: type=region，名称带"中国"前缀；ISO 码仅作技术 id）
+_REGION_ENTRIES: tuple[dict, ...] = (
+    {"id": "TW", "type": "region", "name": "中国台湾", "en_name": "Taiwan",
+     "aliases": ["taiwan", "台湾", "台湾地区", "台湾省"]},
+    {"id": "HK", "type": "region", "name": "中国香港", "en_name": "Hong Kong",
+     "aliases": ["hong kong", "hongkong", "香港", "香港特区", "香港特别行政区"]},
+    {"id": "MO", "type": "region", "name": "中国澳门", "en_name": "Macau",
+     "aliases": ["macau", "macao", "澳门", "澳门特区", "澳门特别行政区"]},
+)
+
+
 @lru_cache(maxsize=1)
 def get_entity_index() -> EntityIndex:
-    """全量注册表索引（国家动态编译 + 手工表），进程内单例。"""
-    return EntityIndex([*_build_country_entries(), *_MANUAL_REGISTRY])
+    """全量注册表索引（国家动态编译 + 港台澳地区条目 + 手工表），进程内单例。"""
+    return EntityIndex([*_build_country_entries(), *_REGION_ENTRIES, *_MANUAL_REGISTRY])
 
 
 def find_entities_in_text(text: str, index: EntityIndex | None = None) -> list[dict]:
