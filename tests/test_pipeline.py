@@ -64,7 +64,9 @@ class TestEntityExtraction:
     def test_extract_institution(self):
         entities = extract_entities("NATO forces deployed in Ukraine")
         names = {e.name for e in entities}
-        assert "NATO" in names or "联合国" in names
+        # 2026-08-27 注册表化: NATO 归一到中文主名"北约"
+        assert "北约" in names
+        assert "乌克兰" in names
 
     def test_empty_text(self):
         entities = extract_entities("")
