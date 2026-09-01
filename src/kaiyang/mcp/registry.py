@@ -380,6 +380,7 @@ TOOLS: list[dict[str, Any]] = [
                 "issue_id": {"type": "string", "description": "专题 ID（二选一）"},
                 "topic": {"type": "string", "description": "自由主题关键词（二选一，如「霍尔木兹海峡航运」）"},
                 "days": {"type": "integer", "description": "自由主题检索窗口天数，默认 365"},
+                "depth": {"type": "string", "description": "recent=近窗(默认) / full=全量两级蒸馏(覆盖开战以来全部信息, 慢且贵)"},
             },
         },
         "outputSchema": _item({

@@ -440,10 +440,12 @@ async def _dispatch_tool(tool_name: str, args: dict) -> dict:
                         "report_id": None, "engine": None, "evidence_count": None, "report_excerpt": None}
             try:
                 if issue_id:
-                    pack = await investigator.build_evidence_pack(issue_id)
+                    pack = await investigator.build_evidence_pack(
+                        issue_id, full=args.get("depth") == "full")
                 else:
                     pack = await investigator.build_evidence_pack_for_topic(
-                        topic, days=int(args.get("days", 365)))
+                        topic, days=int(args.get("days", 365)),
+                        full=args.get("depth") == "full")
             except ValueError as e:
                 return {"ok": False, "error": str(e), "report_id": None,
                         "engine": None, "evidence_count": None, "report_excerpt": None}

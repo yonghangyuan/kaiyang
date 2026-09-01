@@ -117,6 +117,7 @@ export default function WatchPanel() {
   const [reports, setReports] = useState<InvestigateReport[]>([])
   const [topicInput, setTopicInput] = useState('')
   const [reportView, setReportView] = useState<InvestigateReport | null>(null)
+  const [fullDepth, setFullDepth] = useState(false)
 
   const loadReports = async () => {
     const d = await fetchJ('/api/investigate/reports?limit=30')
@@ -131,7 +132,8 @@ export default function WatchPanel() {
 
   // 生成调查报告（专题版或自由主题版）。同步请求, 分析员跑 30-90s。
   const generateReport = async (body: Record<string, unknown>) => {
-    setBusy(true); setMsg('调查中... 分析员在成文, 约 1 分钟')
+    const isFull = body.depth === 'full'
+    setBusy(true); setMsg(isFull ? '全量综述中... 分时段蒸馏+成文, 需几分钟' : '调查中... 分析员在成文, 约 1 分钟')
     try {
       const r = await fetch('/api/investigate', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -151,11 +153,11 @@ export default function WatchPanel() {
     setBusy(false)
   }
 
-  const investigateIssue = () => sel && generateReport({ issue_id: sel })
+  const investigateIssue = () => sel && generateReport({ issue_id: sel, depth: fullDepth ? 'full' : 'recent' })
   const investigateTopic = () => {
     const t = topicInput.trim()
     if (!t) { setMsg('请输入调查主题'); return }
-    generateReport({ topic: t })
+    generateReport({ topic: t, depth: fullDepth ? 'full' : 'recent' })
   }
 
   const fmtTime = (iso: string) => {
@@ -280,7 +282,7 @@ export default function WatchPanel() {
       {/* 调查报告：自由主题入口 + 历史报告 */}
       <div style={{ ...S.sec, borderTop: '2px solid var(--purple)' }}>
         <b style={{ fontSize: 10, color: 'var(--purple)', letterSpacing: '0.05em' }}>调查报告</b>
-        <div style={{ display: 'flex', gap: 6, marginTop: 6 }}>
+        <div style={{ display: 'flex', gap: 6, marginTop: 6, alignItems: 'center' }}>
           <input
             value={topicInput}
             onChange={e => setTopicInput(e.target.value)}
@@ -288,7 +290,14 @@ export default function WatchPanel() {
             placeholder="任意主题，如「霍尔木兹海峡航运」"
             style={{ flex: 1, background: '#0d1330', border: '1px solid var(--border)', borderRadius: 4, color: 'var(--fg)', fontSize: 11, padding: '4px 8px', outline: 'none' }}
           />
-          <button onClick={investigateTopic} disabled={busy} style={S.btn('var(--purple)')}>调查</button>
+          <button onClick={investigateTopic} disabled={busy} style={S.btn('var(--purple)')}>{fullDepth ? '全量综述' : '调查'}</button>
+          <label
+            title="全量模式：分时段LLM蒸馏+终稿综述，覆盖开战以来全部信息，慢几分钟"
+            style={{ display: 'flex', alignItems: 'center', gap: 3, fontSize: 10, color: fullDepth ? 'var(--purple)' : 'var(--fg-dim)', cursor: 'pointer', userSelect: 'none' }}
+          >
+            <input type="checkbox" checked={fullDepth} onChange={e => setFullDepth(e.target.checked)} style={{ accentColor: 'var(--purple)' }} />
+            全量
+          </label>
         </div>
         {reports.length > 0 && (
           <div style={{ marginTop: 8 }}>

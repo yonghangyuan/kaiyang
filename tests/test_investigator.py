@@ -21,6 +21,7 @@ from kaiyang.pipeline import investigator
 from kaiyang.pipeline.investigator import (
     build_evidence_pack, build_evidence_pack_for_topic,
     render_pack, investigate, list_reports, get_report, _layer_evidence,
+    split_buckets, distill_bucket, render_full_feed,
 )
 
 
@@ -306,3 +307,127 @@ async def test_mcp_investigate_tool(setup_db, tmp_reports):
     # 无参数 → ok=False
     bad = await _dispatch_tool("investigate_topic", {})
     assert bad["ok"] is False
+
+
+# ── 全量综述: 分桶 + LLM 蒸馏 ────────────────────────────────
+
+def test_split_buckets_by_size():
+    """按条数分桶: 90条/40上限 → 3桶, 时间序保持。"""
+    ev = [{"id": f"e{i}", "title": f"t{i}", "summary": "", "time": f"2026-08-{(i % 28) + 1:02d}T0{i % 10}:00", "tier": 1, "url": ""} for i in range(90)]
+    buckets = split_buckets(ev)
+    assert len(buckets) == 3
+    assert sum(len(b) for b in buckets) == 90
+
+
+def test_split_buckets_by_gap():
+    """时间间隔 >3天切新桶: 稀疏期自然分段。"""
+    ev = [
+        {"id": "a", "title": "a", "summary": "", "time": "2026-08-01T00:00", "tier": 1, "url": ""},
+        {"id": "b", "title": "b", "summary": "", "time": "2026-08-02T00:00", "tier": 1, "url": ""},
+        {"id": "c", "title": "c", "summary": "", "time": "2026-08-20T00:00", "tier": 1, "url": ""},
+    ]
+    buckets = split_buckets(ev)
+    assert len(buckets) == 2
+    assert [e["id"] for e in buckets[0]] == ["a", "b"]
+    assert [e["id"] for e in buckets[1]] == ["c"]
+
+
+def test_split_buckets_merge_when_too_many():
+    """桶数超上限 → 均匀合并到上限内。"""
+    ev = []
+    for i in range(60):   # 每条隔5天 → 60桶
+        ev.append({"id": f"e{i}", "title": f"t{i}", "summary": "",
+                   "time": f"2026-{(i // 28) + 1:02d}-{(i % 28) + 1:02d}T00:00", "tier": 1, "url": ""})
+    buckets = split_buckets(ev, max_buckets=10)
+    assert len(buckets) <= 10
+    assert sum(len(b) for b in buckets) == 60
+
+
+@pytest.mark.asyncio
+async def test_distill_bucket_llm_then_rule_fallback(setup_db):
+    """桶蒸馏: LLM 成功走 LLM; LLM 挂走规则兜底（零token, 不断档）。"""
+    bucket = [
+        {"id": "e1", "title": "伊朗军演报道", "summary": "内容", "time": "2026-08-01T00:00", "tier": 1, "url": ""},
+        {"id": "e2", "title": "美方制裁宣布", "summary": "内容", "time": "2026-08-02T00:00", "tier": 1, "url": ""},
+    ]
+    # LLM 成功
+    with patch("kaiyang.pipeline.analyst.get_analyst") as mock_get:
+        mock_get.return_value.run = AsyncMock(return_value="本期主线：军演与制裁并行升级。")
+        out = await distill_bucket("测试专题", bucket)
+    assert "军演" in out
+
+    # LLM 全挂 → 规则桶
+    with patch("kaiyang.pipeline.analyst.get_analyst") as mock_get:
+        mock_get.return_value.run = AsyncMock(return_value=None)
+        with patch.object(investigator.settings, "tianshu_base_url", ""):
+            out = await distill_bucket("测试专题", bucket)
+    assert out.startswith("[规则摘要]")
+    assert "2026-08-01" in out
+
+
+def test_render_full_feed():
+    """综述版喂料: 桶摘要 + 代表报道 B桶-序 编号。"""
+    pack = {"subject": "测试", "keywords": "", "chain_events": [
+        {"title": "链事件", "time": "2026-08-01T00:00", "relation": "core", "severity": 5, "description": ""}],
+        "findings": [], "evidence": [], "full": True}
+    distilled = {
+        "buckets": [[
+            {"id": "e1", "title": "代表报道一", "summary": "", "time": "2026-08-01T00:00", "tier": 1, "url": ""},
+            {"id": "e2", "title": "代表报道二", "summary": "", "time": "2026-08-02T00:00", "tier": 4, "url": ""},
+        ]],
+        "summaries": ["本期主线：升级。"],
+        "stats": {"bucket_count": 1, "bucket_spans": ["2026-08-01~2026-08-02"], "evidence_total": 2},
+    }
+    s = render_full_feed(pack, distilled)
+    assert "[B1-1]" in s and "[B1-2]" in s
+    assert "需印证" in s           # tier4 代表报道带标注
+    assert "本期主线" in s         # 桶摘要入料
+    assert "链事件" in s           # 事件链全量
+    assert "全量综述" in s
+
+
+@pytest.mark.asyncio
+async def test_investigate_full_flow_with_distill(setup_db, tmp_reports):
+    """depth=full 全链路: map(桶蒸馏) + reduce(终稿) + 落库带桶元数据。"""
+    iid = await _mk_issue()
+    from kaiyang.pipeline.issue_router import tag_intel_for_issues
+    hits = [await _mk_intel(f"伊朗局势报道第{i}号") for i in range(5)]
+    await tag_intel_for_issues(hits)
+
+    pack = await build_evidence_pack(iid, full=True)
+    assert pack["full"] is True
+    assert len(pack["evidence"]) == 5
+
+    # 桶蒸馏 + 终稿全 mock
+    with patch("kaiyang.pipeline.analyst.get_analyst") as mock_get:
+        mock_get.return_value.run = AsyncMock(side_effect=lambda p, session_id=None: (
+            "桶摘要：本期主线升级。" if "蒸馏" in p or "时段" in p else FAKE_REPORT))
+        result = await investigate(pack)
+
+    assert result["ok"] is True
+    assert result["stats"]["full"] is True
+    assert result["stats"]["bucket_count"] >= 1
+    # 落库带桶元数据
+    detail = await get_report(result["report_id"])
+    assert detail is not None
+    async with async_session() as db:
+        r = await db.execute(select(IntelItem).where(IntelItem.id == result["report_id"]))
+        assert r.scalar_one().raw_data["bucket_count"] >= 1
+
+
+@pytest.mark.asyncio
+async def test_api_investigate_full(setup_db, tmp_reports):
+    """API depth=full 透传。"""
+    iid = await _mk_issue()
+    from kaiyang.pipeline.issue_router import tag_intel_for_issues
+    hits = [await _mk_intel(f"伊朗局势报道第{i}号") for i in range(3)]
+    await tag_intel_for_issues(hits)
+
+    with patch("kaiyang.pipeline.analyst.get_analyst") as mock_get:
+        mock_get.return_value.run = AsyncMock(return_value=FAKE_REPORT)
+        async with _client() as c:
+            resp = await c.post("/api/investigate", json={"issue_id": iid, "depth": "full"})
+    assert resp.status_code == 200
+    d = resp.json()
+    assert d["ok"] is True
+    assert d["stats"]["full"] is True

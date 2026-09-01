@@ -24,21 +24,27 @@ class InvestigateRequest(BaseModel):
     """调查请求: issue_id（专题版）或 topic（自由主题版）二选一。"""
     issue_id: str = ""
     topic: str = ""
-    days: int = 365   # 自由主题版检索窗口（历史调查放宽）
+    days: int = 365          # 自由主题版检索窗口（历史调查放宽）
+    depth: str = "recent"    # recent=近窗60条 / full=全量两级蒸馏(LLM桶)
 
 
 @router.post("")
 async def investigate(req: InvestigateRequest):
-    """生成一份调查报告。同步跑一轮分析员（约 30-90s）。"""
+    """生成一份调查报告。同步跑一轮分析员。
+
+    depth=recent: 约 30-90s。
+    depth=full: 全量两级蒸馏（每桶一次 LLM run + 终稿 run），几分钟级。
+    """
     if not req.issue_id and not req.topic:
         raise HTTPException(400, "issue_id 或 topic 必填其一")
+    full = req.depth == "full"
 
     try:
         if req.issue_id:
-            pack = await investigator.build_evidence_pack(req.issue_id)
+            pack = await investigator.build_evidence_pack(req.issue_id, full=full)
         else:
             pack = await investigator.build_evidence_pack_for_topic(
-                req.topic.strip(), days=req.days)
+                req.topic.strip(), days=req.days, full=full)
     except ValueError as e:
         raise HTTPException(404, str(e))
 
