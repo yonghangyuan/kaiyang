@@ -16,3 +16,6 @@ node_modules/
 reference/
 test_*.py.orig
 backups/
+
+# 调查报告产物: 样例保留, 导出临时文件不入库
+reports/.export-*

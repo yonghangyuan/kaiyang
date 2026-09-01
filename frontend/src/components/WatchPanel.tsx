@@ -13,6 +13,11 @@ interface SourceReport {
 interface WatchIssue {
   id: string; title: string; watch: number; watch_keywords?: string; status: string
 }
+interface InvestigateReport {
+  id: string; title: string; subject: string; issue_id?: string | null
+  kind: string; engine: string; evidence_count: number; published_at: string
+  content?: string
+}
 
 const fetchJ = async (url: string, init?: RequestInit) => {
   try { const r = await fetch(url, init); return await r.json() } catch { return null }
@@ -108,6 +113,51 @@ export default function WatchPanel() {
     if (sel) loadTimeline(sel); setBusy(false)
   }
 
+  // ── 调查报告 ──────────────────────────────────────────────
+  const [reports, setReports] = useState<InvestigateReport[]>([])
+  const [topicInput, setTopicInput] = useState('')
+  const [reportView, setReportView] = useState<InvestigateReport | null>(null)
+
+  const loadReports = async () => {
+    const d = await fetchJ('/api/investigate/reports?limit=30')
+    setReports(d?.reports || [])
+  }
+  useEffect(() => { loadReports() }, [])
+
+  const openReport = async (rid: string) => {
+    const d = await fetchJ(`/api/investigate/reports/${rid}`)
+    if (d && !d.error) setReportView(d)
+  }
+
+  // 生成调查报告（专题版或自由主题版）。同步请求, 分析员跑 30-90s。
+  const generateReport = async (body: Record<string, unknown>) => {
+    setBusy(true); setMsg('调查中... 分析员在成文, 约 1 分钟')
+    try {
+      const r = await fetch('/api/investigate', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      })
+      const d = await r.json()
+      if (d?.ok) {
+        setMsg(`报告已生成 (${d.engine}, 证据${d.stats?.evidence_count ?? 0}条)`)
+        await loadReports()
+        setReportView({ id: d.report_id, title: `调查报告: ${d.pack?.subject || ''}`, subject: d.pack?.subject || '', kind: d.pack?.kind || '', engine: d.engine, evidence_count: d.stats?.evidence_count ?? 0, published_at: new Date().toISOString(), content: d.report })
+      } else {
+        setMsg(d?.error || '生成失败')
+      }
+    } catch (e: any) {
+      setMsg(`生成失败: ${e.message}`)
+    }
+    setBusy(false)
+  }
+
+  const investigateIssue = () => sel && generateReport({ issue_id: sel })
+  const investigateTopic = () => {
+    const t = topicInput.trim()
+    if (!t) { setMsg('请输入调查主题'); return }
+    generateReport({ topic: t })
+  }
+
   const fmtTime = (iso: string) => {
     if (!iso) return ''
     const d = new Date(iso.includes('T') ? iso : iso.replace(' ', 'T') + 'Z')
@@ -167,6 +217,7 @@ export default function WatchPanel() {
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
             <b style={{ flex: 1 }}>时间链</b>
             <span style={{ fontSize: 10, color: 'var(--fg-dim)' }}>{nodes.length} 节点</span>
+            <button onClick={investigateIssue} disabled={busy} style={S.btn('var(--purple)')}>生成调查报告</button>
             <button onClick={analyzeNow} disabled={busy} style={S.btn('var(--accent)')}>立即分析</button>
           </div>
           {pendingCount > 0 && <div style={{ color: 'var(--yellow)', fontSize: 11 }}>⚠ {pendingCount} 条结构性建议待审</div>}
@@ -226,6 +277,32 @@ export default function WatchPanel() {
         </div>
       )}
 
+      {/* 调查报告：自由主题入口 + 历史报告 */}
+      <div style={{ ...S.sec, borderTop: '2px solid var(--purple)' }}>
+        <b style={{ fontSize: 10, color: 'var(--purple)', letterSpacing: '0.05em' }}>调查报告</b>
+        <div style={{ display: 'flex', gap: 6, marginTop: 6 }}>
+          <input
+            value={topicInput}
+            onChange={e => setTopicInput(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && !busy && investigateTopic()}
+            placeholder="任意主题，如「霍尔木兹海峡航运」"
+            style={{ flex: 1, background: '#0d1330', border: '1px solid var(--border)', borderRadius: 4, color: 'var(--fg)', fontSize: 11, padding: '4px 8px', outline: 'none' }}
+          />
+          <button onClick={investigateTopic} disabled={busy} style={S.btn('var(--purple)')}>调查</button>
+        </div>
+        {reports.length > 0 && (
+          <div style={{ marginTop: 8 }}>
+            {reports.map(r => (
+              <div key={r.id} onClick={() => openReport(r.id)} style={{ cursor: 'pointer', display: 'flex', gap: 6, alignItems: 'center', padding: '5px 6px', marginTop: 3, borderRadius: 4, background: '#0d1330', borderLeft: '2px solid var(--purple)' }}>
+                <span style={{ fontSize: 11, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.subject}</span>
+                <span style={{ fontSize: 9, color: 'var(--fg-dim)' }} title={r.engine === 'embedded-tianshu' ? '嵌入式天枢' : r.engine}>{r.evidence_count}证</span>
+                <span style={{ fontSize: 9, color: 'var(--fg-dim)' }}>{fmtTime(r.published_at)}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
       {/* 全部 Issue 列表（开启追踪入口） */}
       <div style={S.sec}>
         <b style={{ fontSize: 10, color: 'var(--fg-dim)' }}>全部议题</b>
@@ -238,6 +315,38 @@ export default function WatchPanel() {
       </div>
 
       {msg && <div style={{ fontSize: 11, color: 'var(--fg-dim)', textAlign: 'center' }}>{msg}</div>}
+
+      {/* 调查报告查看器 */}
+      {reportView && (
+        <div
+          onClick={() => setReportView(null)}
+          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', zIndex: 2000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}
+        >
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 8, width: 640, maxWidth: '90vw', maxHeight: '82vh', display: 'flex', flexDirection: 'column' }}
+          >
+            <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)', display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+              <div style={{ flex: 1, fontSize: 13, fontWeight: 700, lineHeight: 1.4 }}>{reportView.subject ? `调查报告: ${reportView.subject}` : reportView.title}</div>
+              <a href={`/api/investigate/reports/${reportView.id}/export?format=md`} style={{ ...S.btn('#1d4ed8'), textDecoration: 'none', display: 'inline-block' }}>md</a>
+              <a href={`/api/investigate/reports/${reportView.id}/export?format=docx`} style={{ ...S.btn('#1d4ed8'), textDecoration: 'none', display: 'inline-block' }}>docx</a>
+              <button onClick={() => setReportView(null)} style={{ background: 'none', border: 'none', color: 'var(--fg-dim)', cursor: 'pointer', fontSize: 16 }}>✕</button>
+            </div>
+            <div style={{ padding: '8px 16px 16px', overflow: 'auto', flex: 1, fontSize: 12, lineHeight: 1.7 }}>
+              {(reportView.content || '').split('\n').map((line, i) => {
+                const key = `l${i}`
+                if (line.startsWith('## ')) return <div key={key} style={{ fontSize: 14, fontWeight: 700, color: 'var(--accent)', margin: '14px 0 6px' }}>{line.slice(3)}</div>
+                if (line.startsWith('# ')) return <div key={key} style={{ fontSize: 16, fontWeight: 700, margin: '6px 0' }}>{line.slice(2)}</div>
+                if (line.startsWith('> ')) return <div key={key} style={{ color: 'var(--fg-dim)', fontSize: 10, borderLeft: '2px solid var(--purple)', paddingLeft: 8, margin: '4px 0' }}>{line.slice(2)}</div>
+                if (/^\s*[-*]\s/.test(line)) return <div key={key} style={{ paddingLeft: 14, margin: '2px 0' }}>• {line.replace(/^\s*[-*]\s/, '')}</div>
+                if (line.trim() === '---') return <hr key={key} style={{ border: 'none', borderTop: '1px solid var(--border)', margin: '10px 0' }} />
+                if (!line.trim()) return <div key={key} style={{ height: 6 }} />
+                return <div key={key}>{line}</div>
+              })}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* 源报道弹窗 */}
       {modal && (

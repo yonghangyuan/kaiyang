@@ -58,8 +58,8 @@ async def _call(client: AsyncClient, name: str, arguments: dict, req_id: int = 1
 # ── 注册表纪律 ────────────────────────────────────────────────
 
 def test_every_tool_has_discipline_fields():
-    """15 工具每个必填 outputSchema + annotations 四布尔 + _outputBudgetBytes。"""
-    assert len(TOOLS) == 15
+    """16 工具每个必填 outputSchema + annotations 四布尔 + _outputBudgetBytes。"""
+    assert len(TOOLS) == 16
     for t in TOOLS:
         name = t["name"]
         assert t.get("outputSchema"), f"{name} 缺 outputSchema"

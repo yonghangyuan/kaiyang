@@ -369,6 +369,28 @@ TOOLS: list[dict[str, Any]] = [
             })),
         }),
     },
+    {
+        "name": "investigate_topic",
+        "description": "就专题或任意主题生成一份调查报告（证据包→分析员→报告落库可检索）。重产出，一次使命最多调一次。",
+        "annotations": _WRITE,
+        "_outputBudgetBytes": SMALL_OUTPUT_BUDGET_BYTES,
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "issue_id": {"type": "string", "description": "专题 ID（二选一）"},
+                "topic": {"type": "string", "description": "自由主题关键词（二选一，如「霍尔木兹海峡航运」）"},
+                "days": {"type": "integer", "description": "自由主题检索窗口天数，默认 365"},
+            },
+        },
+        "outputSchema": _item({
+            "ok": {"type": "boolean"},
+            "report_id": {"type": ["string", "null"]},
+            "engine": {"type": ["string", "null"]},
+            "error": {"type": ["string", "null"]},
+            "evidence_count": {"type": ["integer", "null"]},
+            "report_excerpt": {"type": ["string", "null"], "description": "报告开头 400 字"},
+        }, required=["ok"]),
+    },
 ]
 
 

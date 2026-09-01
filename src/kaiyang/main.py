@@ -423,6 +423,7 @@ from .api.verify import router as verify_router
 from .api.narrative import router as narrative_router
 from .api.commands import router as commands_router
 from .api.watch import router as watch_router
+from .api.investigate import router as investigate_router
 from .mcp.handler import router as mcp_router
 
 app.include_router(sources_router)
@@ -441,6 +442,7 @@ app.include_router(verify_router)
 app.include_router(narrative_router)
 app.include_router(commands_router)
 app.include_router(watch_router)
+app.include_router(investigate_router)
 app.include_router(mcp_router)
 
 

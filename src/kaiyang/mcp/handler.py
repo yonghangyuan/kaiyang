@@ -431,6 +431,41 @@ async def _dispatch_tool(tool_name: str, args: dict) -> dict:
                                 "chain_count": chain_n or 0, "recent_findings": finds or 0})
                 return {"issues": out}
 
+        elif tool_name == "investigate_topic":
+            from ..pipeline import investigator
+            issue_id = args.get("issue_id", "")
+            topic = args.get("topic", "")
+            if not issue_id and not topic:
+                return {"ok": False, "error": "issue_id 或 topic 必填其一",
+                        "report_id": None, "engine": None, "evidence_count": None, "report_excerpt": None}
+            try:
+                if issue_id:
+                    pack = await investigator.build_evidence_pack(issue_id)
+                else:
+                    pack = await investigator.build_evidence_pack_for_topic(
+                        topic, days=int(args.get("days", 365)))
+            except ValueError as e:
+                return {"ok": False, "error": str(e), "report_id": None,
+                        "engine": None, "evidence_count": None, "report_excerpt": None}
+            if not pack.get("evidence"):
+                return {"ok": False, "error": f"「{pack['subject']}」库内无相关情报",
+                        "report_id": None, "engine": None, "evidence_count": 0, "report_excerpt": None}
+            result = await investigator.investigate(
+                pack, session_id=f"mcp-investigate-{pack['subject'][:20]}")
+            if not result["ok"]:
+                return {"ok": False, "error": result["error"], "report_id": None,
+                        "engine": None, "evidence_count": None, "report_excerpt": None}
+            # 注意: MCP 输出纪律预算门会截超长报告——excerpt 模式主动瘦身
+            body = result["report"]
+            excerpt = body[:400] + ("…" if len(body) > 400 else "")
+            return {
+                "ok": True,
+                "report_id": result["report_id"],
+                "engine": result["engine"],
+                "evidence_count": result["stats"]["evidence_count"],
+                "report_excerpt": excerpt,
+            }
+
         else:
             return {"error": f"Tool {tool_name} not implemented"}
 
