@@ -51,12 +51,14 @@ async def chat(req: ChatRequest):
         pass
 
     # 2) HTTP 天枢（服务器实例）
+    # timeout 300s（2026-09-02）: 分析员走检索决策链(web_search/多工具)时
+    # 一次 run 可达分钟级, 45s 会在链路中途掐断——用户看到的就是"没回复"
     if settings.tianshu_base_url:
         try:
             headers = {}
             if settings.tianshu_token:
                 headers["Authorization"] = f"Bearer {settings.tianshu_token}"
-            async with httpx.AsyncClient(timeout=45) as client:
+            async with httpx.AsyncClient(timeout=300) as client:
                 resp = await client.post(
                     f"{settings.tianshu_base_url}/run",
                     json={"input": prompt, "session_id": "kaiyang-chat"},

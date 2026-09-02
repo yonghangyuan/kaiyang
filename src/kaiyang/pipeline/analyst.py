@@ -50,6 +50,23 @@ class EmbeddedAnalyst:
         self.core = None
         self.ready = False
         self.error = ""
+        # 会话记忆（2026-09-02 失忆修复）: 天枢 run() 的 session_id 只是标签,
+        # ctx 须由调用方持有——同款天枢 gateway/server.py 的 _sessions 模式。
+        # 此前每次 run() 都新建空 ctx → 对话永远单轮, "继续"接不上话头。
+        self._sessions: dict = {}
+        # 单会话消息上限（防爆内存; 与天枢 fork_session 保留量同量级）
+        self._max_session_messages = 60
+
+    def _get_ctx(self, session_id: str):
+        """取或建会话上下文, 超限截断旧消息。"""
+        from tianshu.sdk.models import AgentContext
+        ctx = self._sessions.get(session_id)
+        if ctx is None:
+            ctx = AgentContext(session_id=session_id)
+            self._sessions[session_id] = ctx
+        if len(ctx.messages) > self._max_session_messages:
+            ctx.messages = ctx.messages[-self._max_session_messages:]
+        return ctx
 
     def boot(self) -> bool:
         """装配 AgentCore。失败不抛错（调用方走降级链）。"""
@@ -84,8 +101,12 @@ class EmbeddedAnalyst:
 
             self.core = AgentCore()
             # db 分区: 开阳侧独立审计库, 不写天枢主库
+            # ⚠️ 路径踩坑(2026-09-02): 曾用 parents[2] 算出 src/backups/(目录不存在,
+            # 审计静默丢失)——统一走 settings.project_root
+            audit_dir = settings.project_root / "backups"
+            audit_dir.mkdir(parents=True, exist_ok=True)
             self.core.setup(registry=registry, routing=routing, system_prompt=soul,
-                            db_path=str(Path(__file__).resolve().parents[2] / "backups" / "analyst_audit.db"))
+                            db_path=str(audit_dir / "analyst_audit.db"))
             # 自主情报官: 把开阳自己的 MCP 工具接进分析员的工具箱
             # (进程内 HTTP 回环——复用输出纪律层, 天枢 McpClientManager 编程式连接)
             # MCP SDK 的 Client 持有 anyio cancel scope——连接必须由一个常驻 task
@@ -134,24 +155,58 @@ class EmbeddedAnalyst:
             return False
 
     async def run(self, prompt: str, session_id: str = "kaiyang-analyst") -> str | None:
-        """跑一轮分析。返回文本或 None（失败, 调用方降级）。"""
+        """跑一轮分析（带会话记忆）。返回文本或 None（失败, 调用方降级）。
+
+        empty content 韧性（2026-09-02）: 分析员带 17 个 MCP 工具时,
+        LLM 可能连续调工具直到天枢 run() 的 10 轮上限耗尽 → 返回空。
+        此时重试一轮: 清掉该会话残留的未闭合工具消息, 再跑一次。
+        """
         if not self.ready and not self.boot():
             return None
         try:
             from tianshu.sdk.models import AgentRequest
-            resp = await self.core.run(AgentRequest(
-                input=prompt, session_id=session_id, task_type="analysis",
-            ))
+            ctx = self._get_ctx(session_id)
+            resp = await self.core.run(
+                AgentRequest(input=prompt, session_id=session_id, task_type="analysis"),
+                ctx=ctx,
+            )
             if resp.error:
                 self.error = f"resp.error: {resp.error[:150]}"
                 return None
-            if not resp.content:
-                self.error = "empty content"
-                return None
-            return resp.content
+            if resp.content:
+                return resp.content
+            # 空 content → 工具循环耗尽嫌疑: 清残留工具轮消息重试一次
+            self.error = "empty content (retrying without stale tool turns)"
+            self._clean_stale_tool_turns(ctx)
+            resp2 = await self.core.run(
+                AgentRequest(input=prompt, session_id=session_id, task_type="analysis"),
+                ctx=ctx,
+            )
+            if resp2.content:
+                self.error = ""
+                return resp2.content
+            self.error = f"empty content after retry ({resp2.error or 'no error'})"
+            return None
         except Exception as e:
             self.error = f"exception: {str(e)[:150]}"
             return None
+
+    @staticmethod
+    def _clean_stale_tool_turns(ctx) -> None:
+        """清掉会话里未闭合的工具调用轮（role=tool / 带 tool_calls 的 assistant）。
+
+        天枢 run() 循环耗尽时, ctx.messages 已 append 了工具消息但本轮
+        没有 assistant 结论——下一轮带这些悬挂消息容易被 LLM 拒答或继续空转。
+        """
+        cleaned = []
+        for m in (ctx.messages or []):
+            role = m.get("role", "")
+            if role == "tool":
+                continue
+            if role == "assistant" and m.get("tool_calls"):
+                continue
+            cleaned.append(m)
+        ctx.messages = cleaned
 
 
 # ── 模块级单例 ─────────────────────────────────────────────────

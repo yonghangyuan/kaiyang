@@ -240,12 +240,21 @@ async def global_exception_handler(request: Request, exc: Exception):
 
 @app.middleware("http")
 async def request_timeout_middleware(request: Request, call_next):
-    """请求超时保护：60s 上限。"""
+    """请求超时保护：60s 上限；LLM 长链路端点豁免（2026-09-02）。
+
+    豁免名单 = 分析员一次 run 可达分钟级的端点:
+    chat（检索决策链）/ investigate（两级蒸馏）/ briefing（web+摘要）。
+    60s 门对这些端点是误杀——15:23 案例里 web_search 已完成落库,
+    回复却被中间件掐断, 用户端表现为永远"思考中"。
+    """
     import asyncio as _aio
+    LONG_PATHS = ("/api/chat", "/api/investigate", "/api/search/briefing", "/api/issues")
+    is_long = request.url.path.startswith(LONG_PATHS)
+    timeout = 600.0 if is_long else 60.0
     try:
-        return await _aio.wait_for(call_next(request), timeout=60.0)
+        return await _aio.wait_for(call_next(request), timeout=timeout)
     except _aio.TimeoutError:
-        return _JSONResponse(status_code=504, content={"error": True, "message": "Request timeout (60s)"})
+        return _JSONResponse(status_code=504, content={"error": True, "message": f"Request timeout ({timeout:.0f}s)"})
 
 
 # ── 认证中间件 ──────────────────────────────────────────────
