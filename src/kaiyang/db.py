@@ -55,10 +55,17 @@ async def init_db() -> None:
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
         # FTS5 虚拟表（SQLite 原生全文搜索）
+        # 2026-09-01: unicode61 对中文失明(整段一个token, "西藏 AND 泥石流"命中0)
+        # → 换 trigram(3-gram子串匹配, 中文正确)。旧 unicode61 表若存在则重建。
         if settings.using_sqlite:
+            old = (await conn.execute(text(
+                "SELECT sql FROM sqlite_master WHERE name='intel_fts'"
+            ))).scalar()
+            if old and "unicode61" in (old or ""):
+                await conn.execute(text("DROP TABLE intel_fts"))
             await conn.execute(text(
                 "CREATE VIRTUAL TABLE IF NOT EXISTS intel_fts USING fts5("
-                "  title, content, tokenize='unicode61'"
+                "  title, content, tokenize='trigram'"
                 ")"
             ))
         # 轻量迁移: 事件身份层列 (2026-08-20)。SQLite 无 IF NOT EXISTS for column，

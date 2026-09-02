@@ -26,6 +26,7 @@ router = APIRouter(prefix="/api/search", tags=["search"])
 class SearchRequest(BaseModel):
     query: str
     limit: int = 30
+    days: int | None = None   # 显式时间窗; 缺省按查询里的时间词, 再缺省 7 天
 
 
 # ── 时间解析 ───────────────────────────────────────────────────
@@ -80,6 +81,11 @@ async def smart_search(req: SearchRequest):
     since, until = _parse_time_range(query)
     keyword = _extract_search_keyword(query)
 
+    # 显式时间窗覆盖（事件回查/历史调查用; MCP search_intel 也透传此参）
+    if req.days:
+        since = datetime.now(timezone.utc) - timedelta(days=req.days)
+        until = None
+
     # 检测查询中的地名
     country_match = find_country(query)
     search_country = country_match[3] if country_match else None
@@ -92,13 +98,18 @@ async def smart_search(req: SearchRequest):
             q = q.where(IntelItem.published_at < until)
 
         # 关键词过滤（keyword 为空 = 只看时间范围）
+        # 2026-09-01: 按空格分词 AND——此前整串 contains, "西藏 泥石流"
+        # 要求标题含连续子串, 永远命中0(西藏吉隆泥石流案例根因之一)
         if keyword and len(keyword) >= 2:
-            q = q.where(
-                or_(
-                    IntelItem.title.contains(keyword),
-                    IntelItem.content.contains(keyword),
+            for kw in keyword.split():
+                if len(kw) < 2:
+                    continue
+                q = q.where(
+                    or_(
+                        IntelItem.title.contains(kw),
+                        IntelItem.content.contains(kw),
+                    )
                 )
-            )
 
         # 国家过滤（如果查询中指定了国家）
         if search_country:

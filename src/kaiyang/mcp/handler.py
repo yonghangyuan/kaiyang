@@ -179,14 +179,16 @@ async def _dispatch_tool(tool_name: str, args: dict) -> dict:
         elif tool_name == "search_intel":
             from ..db import async_session
             from ..models import IntelItem
-            from sqlalchemy import select
+            from sqlalchemy import select, or_
             keyword = args.get("keyword", "")
             limit = min(args.get("limit", 20), 50)
             async with async_session() as db:
-                q = select(IntelItem).where(
-                    (IntelItem.title.contains(keyword)) |
-                    (IntelItem.content.contains(keyword))
-                ).order_by(IntelItem.published_at.desc()).limit(limit)
+                q = select(IntelItem)
+                # 2026-09-01: 空格分词 AND——整串 contains 让"西藏 泥石流"永远0
+                kws = [k for k in keyword.split() if len(k) >= 2] or [keyword]
+                for k in kws:
+                    q = q.where((IntelItem.title.contains(k)) | (IntelItem.content.contains(k)))
+                q = q.order_by(IntelItem.published_at.desc()).limit(limit)
                 result = await db.execute(q)
                 items = result.scalars().all()
             return {

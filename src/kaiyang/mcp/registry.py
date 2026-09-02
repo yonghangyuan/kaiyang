@@ -79,7 +79,7 @@ TOOLS: list[dict[str, Any]] = [
     },
     {
         "name": "search_intel",
-        "description": "搜索开源情报数据库。按关键词查找新闻/事件条目（FTS5 全文检索）。",
+        "description": "搜索开源情报数据库。按关键词查找新闻/事件条目。多词空格分隔=AND 语义（如「西藏 泥石流」=标题/正文同时含两词），不限时间窗。",
         "annotations": _RO,
         "_outputBudgetBytes": LIST_OUTPUT_BUDGET_BYTES,
         "inputSchema": {
@@ -87,7 +87,7 @@ TOOLS: list[dict[str, Any]] = [
             "properties": {
                 "keyword": {
                     "type": "string",
-                    "description": "搜索关键词",
+                    "description": "搜索关键词，多词空格分隔（AND）",
                 },
                 "limit": {
                     "type": "integer",

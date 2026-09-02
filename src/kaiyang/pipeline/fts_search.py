@@ -18,15 +18,20 @@ from ..config import settings
 async def fts_search(query: str, limit: int = 50, since_days: int = 7) -> list[dict]:
     """全文搜索 intel_items。
 
-    使用 FTS5 MATCH 语法，自动将空格分隔的关键词转为 AND 查询。
+    trigram tokenizer (2026-09-01): 中文按 3-gram 子串匹配,
+    每词直接引号包裹（trigram 不支持 * 前缀, 子串语义天然覆盖）。
     返回: [{id, title, lat, lng, country_code, published_at, url, rank}, ...]
     """
     if not query or len(query.strip()) < 2:
         return []
 
-    # 构建 FTS5 查询: 每个词加前缀匹配
-    terms = [f'"{t}"' if " " in t else f"{t}*" for t in query.strip().split()]
+    terms = [f'"{t}"' for t in query.strip().split()]
     fts_query = " AND ".join(terms)
+
+    # trigram 限定: 查询词 <3 字符(如"AI"/单汉字)无法构成3-gram → 直接走 LIKE
+    if any(len(t) < 3 for t in query.strip().split()):
+        async with async_session() as db:
+            return await _like_fallback(query, limit, since_days, db)
 
     async with async_session() as db:
         try:
