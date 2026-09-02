@@ -42,16 +42,38 @@ async def _get_source(sid):
 
 # ── 零产出自动暂停 ────────────────────────────────────────────
 
+async def _mk_intel(sid, title="x") -> None:
+    from kaiyang.models import IntelItem, _new_id, _utcnow
+    async with async_session() as db:
+        db.add(IntelItem(
+            id=_new_id("IT"), source_id=sid, title=title, content="",
+            url=f"http://t/{_new_id('u')}", published_at=_utcnow(), fetched_at=_utcnow(),
+        ))
+        await db.commit()
+
+
 @pytest.mark.asyncio
 async def test_zero_yield_auto_pause(setup_db):
-    """连续 3 轮'抓到条目但 0 新增' → 自动 paused（慢性死亡识别）。"""
+    """连续 3 轮'抓到条目但 0 新增' + 近7天曾有产出 → 自动 paused（慢性死亡识别）。"""
     sid = await _mk_source("慢性死亡源")
-    # 3 轮 fetched>0 stored=0
+    # 先让源有近期产出（满足活跃度门——8-26 误杀后 2026-09-02 加）
+    await _mk_intel(sid, "源曾经的产出")
     for _ in range(3):
         await note_round_result(sid, fetched=10, stored=0)
     s = await _get_source(sid)
     assert s.status == "paused"
     assert (s.config or {}).get("paused_reason", "").startswith("zero_yield")
+
+
+@pytest.mark.asyncio
+async def test_zero_yield_low_freq_no_pause(setup_db):
+    """低频源（近7天无新条目）不暂停——USGS滚动窗口/调试期密集抓取不是慢性死亡。"""
+    sid = await _mk_source("低频源")
+    for _ in range(3):
+        await note_round_result(sid, fetched=10, stored=0)
+    s = await _get_source(sid)
+    assert s.status == "active"
+    assert (s.config or {}).get("freshness_state") == "zero_yield_low_freq"
 
 
 @pytest.mark.asyncio

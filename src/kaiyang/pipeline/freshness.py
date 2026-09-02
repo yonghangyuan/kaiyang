@@ -34,6 +34,10 @@ async def note_round_result(source_id: str, fetched: int, stored: int) -> None:
     """每轮抓取后记一笔——零产出计数的累加器。
 
     fetched: 抓到的原始条数; stored: 实际新入库数。
+
+    2026-09-02 修订（8-26 误杀复盘）: zero_yield 暂停加了**入库活跃度门**——
+    只停"近 7 天内有过新条目然后断流"的源。低频源（USGS 滚动窗口小/
+    周更媒体）轮询全重复是常态, 不是慢性死亡; 调试期密集抓取也不该触发。
     """
     async with async_session() as db:
         r = await db.execute(select(Source).where(Source.id == source_id))
@@ -52,16 +56,61 @@ async def note_round_result(source_id: str, fetched: int, stored: int) -> None:
                 zy = int(cfg.get("zero_yield_streak", 0)) + 1
                 cfg["zero_yield_streak"] = zy
                 if zy >= ZERO_YIELD_PAUSE and s.status == "active":
-                    s.status = "paused"
-                    cfg["paused_reason"] = (
-                        f"zero_yield: 连续{zy}轮抓到条目但0新入库 "
-                        f"({datetime.now(timezone.utc).isoformat()[:19]})"
-                    )
+                    if await _was_recently_productive(s.id):
+                        s.status = "paused"
+                        cfg["paused_reason"] = (
+                            f"zero_yield: 连续{zy}轮抓到条目但0新入库 "
+                            f"({datetime.now(timezone.utc).isoformat()[:19]})"
+                        )
+                    else:
+                        # 低频源: 只记状态不暂停
+                        cfg["freshness_state"] = "zero_yield_low_freq"
             else:
                 cfg["zero_yield_streak"] = 0
                 cfg["freshness_state"] = "fresh"
         s.config = cfg
         await db.commit()
+
+
+async def _was_recently_productive(source_id: str, days: int = 7) -> bool:
+    """近 N 天内有过新条目入库的源才算"曾经高产"——zero_yield 暂停的前置门。"""
+    since = datetime.now(timezone.utc) - timedelta(days=days)
+    async with async_session() as db:
+        n = (await db.execute(
+            select(func.count()).select_from(IntelItem).where(
+                IntelItem.source_id == source_id,
+                IntelItem.fetched_at > since,
+            ))).scalar()
+    return (n or 0) > 0
+
+
+async def revive_paused_sources() -> dict:
+    """恢复被 zero_yield 误暂停的源（重启后人工/自动调用）。
+
+    判定: paused_reason 是 zero_yield 且复检时源仍可达/feed 仍有新内容
+    的候选——保守起见只恢复"最近 14 天曾有过新条目"的, 其余留 paused
+    等人工 probe。
+    """
+    stats = {"revived": [], "kept": 0}
+    async with async_session() as db:
+        rows = (await db.execute(
+            select(Source).where(Source.status == "paused"))).scalars().all()
+        for s in rows:
+            cfg = dict(s.config or {})
+            if "zero_yield" not in str(cfg.get("paused_reason", "")):
+                stats["kept"] += 1
+                continue
+            if await _was_recently_productive(s.id, days=14):
+                s.status = "active"
+                cfg["freshness_state"] = "fresh"
+                cfg["zero_yield_streak"] = 0
+                cfg["revived_at"] = datetime.now(timezone.utc).isoformat()[:19]
+                s.config = cfg
+                stats["revived"].append(s.name)
+            else:
+                stats["kept"] += 1
+        await db.commit()
+    return stats
 
 
 async def scan_freshness() -> dict:
