@@ -179,7 +179,7 @@ async def _dispatch_tool(tool_name: str, args: dict) -> dict:
         elif tool_name == "search_intel":
             from ..db import async_session
             from ..models import IntelItem
-            from sqlalchemy import select, or_
+            from sqlalchemy import select, or_, func
             keyword = args.get("keyword", "")
             limit = min(args.get("limit", 20), 50)
             async with async_session() as db:
@@ -191,6 +191,26 @@ async def _dispatch_tool(tool_name: str, args: dict) -> dict:
                 q = q.order_by(IntelItem.published_at.desc()).limit(limit)
                 result = await db.execute(q)
                 items = result.scalars().all()
+
+                # 零结果鉴别（盲区自知, 2026-09-02）: 0 命中时逐词分别计数,
+                # 让分析员能区分"检索组合问题"vs"库内真没有"
+                zero_diagnosis = None
+                if not items:
+                    per_term = {}
+                    for k in kws:
+                        n = (await db.execute(
+                            select(func.count()).select_from(IntelItem).where(
+                                (IntelItem.title.contains(k)) | (IntelItem.content.contains(k))
+                            ))).scalar()
+                        per_term[k] = n or 0
+                    total = (await db.execute(select(func.count()).select_from(IntelItem))).scalar()
+                    zero_diagnosis = {
+                        "per_term_hits": per_term,
+                        "library_total": total or 0,
+                        "hint": ("各词分别有命中但组合无——换关键词组合重查, 不要断言库内无情报"
+                                 if any(v > 0 for v in per_term.values())
+                                 else "库内确无此信息——可走 web_search 外部检索"),
+                    }
             return {
                 "keyword": keyword,
                 "count": len(items),
@@ -199,6 +219,7 @@ async def _dispatch_tool(tool_name: str, args: dict) -> dict:
                      "published_at": i.published_at.isoformat() if i.published_at else None}
                     for i in items
                 ],
+                **({"zero_diagnosis": zero_diagnosis} if zero_diagnosis else {}),
             }
 
         elif tool_name == "create_issue":
@@ -432,6 +453,14 @@ async def _dispatch_tool(tool_name: str, args: dict) -> dict:
                                 "keywords": iss.watch_keywords or "", "pool_count": pool or 0,
                                 "chain_count": chain_n or 0, "recent_findings": finds or 0})
                 return {"issues": out}
+
+        elif tool_name == "web_search":
+            from ..pipeline.websearch_bridge import web_search_and_maybe_ingest
+            return await web_search_and_maybe_ingest(
+                args.get("query", ""),
+                count=int(args.get("count", 8)),
+                ingest=bool(args.get("ingest", False)),
+            )
 
         elif tool_name == "investigate_topic":
             from ..pipeline import investigator

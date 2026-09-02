@@ -406,11 +406,22 @@ async def search_briefing(req: SearchRequest):
 
 
 async def _tianshu_web_search(query: str) -> list[dict]:
-    """通过天枢联网搜索，返回结构化结果列表。
+    """联网搜索（进程内直调天枢 WebSearchSkill, 2026-09-02 改造）。
 
-    天枢的 web_search skill 会自动搜索 Bing/百度/搜狗。
+    旧实现: HTTP 绕行服务器天枢 + 把中文查询翻译成英文 → 搜回来旅游攻略。
+    新实现: 与 MCP web_search 工具同款——中文原样, 引擎链 HTML 解析。
     返回: [{title, url, snippet}, ...]
     """
+    from ..pipeline.websearch_bridge import run_web_search
+    result = await run_web_search(query, count=10)
+    if not result.get("ok"):
+        # 降级: 旧 HTTP 路径（服务器天枢在线时仍可用）
+        return await _tianshu_web_search_http(query)
+    return result.get("results", [])
+
+
+async def _tianshu_web_search_http(query: str) -> list[dict]:
+    """HTTP 天枢降级路径（服务器实例在线时的备份）。"""
     from ..config import settings
     import httpx
 

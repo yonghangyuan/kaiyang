@@ -105,6 +105,11 @@ TOOLS: list[dict[str, Any]] = [
                 "url": {"type": "string"},
                 "published_at": {"type": ["string", "null"], "description": "ISO 8601"},
             })),
+            "zero_diagnosis": _item({
+                "per_term_hits": {"type": "object"},
+                "library_total": {"type": "integer"},
+                "hint": {"type": "string"},
+            }),
         }),
     },
     {
@@ -390,6 +395,37 @@ TOOLS: list[dict[str, Any]] = [
             "error": {"type": ["string", "null"]},
             "evidence_count": {"type": ["integer", "null"]},
             "report_excerpt": {"type": ["string", "null"], "description": "报告开头 400 字"},
+        }, required=["ok"]),
+    },
+    {
+        "name": "web_search",
+        "description": "联网搜索（自建引擎链 cn.bing→搜狗→百度，中文用完整句子效果最好，不要翻译成英文）。库内查不到时的第二通道；结果可选 ingest 入库（tier4 需印证）。",
+        "annotations": _RO_OPEN,
+        "_outputBudgetBytes": SMALL_OUTPUT_BUDGET_BYTES,
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "query": {"type": "string", "description": "搜索查询，中文完整句子"},
+                "count": {"type": "integer", "description": "结果条数（默认 8，上限 20）"},
+                "ingest": {"type": "boolean", "description": "结果入库（默认否）。用户明确关注的/突发多源的/专题相关的才入，背景资料不入"},
+            },
+            "required": ["query"],
+        },
+        "outputSchema": _item({
+            "ok": {"type": "boolean"},
+            "query": {"type": ["string", "null"]},
+            "count": {"type": ["integer", "null"]},
+            "results": _arr(_item({
+                "title": {"type": "string"},
+                "snippet": {"type": "string"},
+                "url": {"type": "string"},
+            })),
+            "error": {"type": ["string", "null"]},
+            "ingest": _item({
+                "ingested": {"type": "integer"},
+                "skipped_dup": {"type": "integer"},
+                "geocoded": {"type": "integer"},
+            }),
         }, required=["ok"]),
     },
 ]
