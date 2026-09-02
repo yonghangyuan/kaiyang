@@ -104,8 +104,16 @@ async def latest_intel(
         rows = result.all()
 
     # 按源分桶（保持时间倒序，每桶已 ≤ per_source）
+    # 指纹去重（2026-09-02）: 库里历史遗留的同指纹条目在展示层过滤——
+    # 入库去重门只对新条目生效, 老重复用 raw_data.fp 现场归并
     by_source: dict[str, list] = {}
+    seen_fp: set[str] = set()
     for it, src_name in rows:
+        fp = ((it.raw_data or {}).get("fp") if isinstance(it.raw_data, dict) else None)
+        if fp:
+            if fp in seen_fp:
+                continue
+            seen_fp.add(fp)
         by_source.setdefault(src_name, []).append((it, src_name))
 
     # 轮转交错: 每轮从各源各取一条（桶序按各源最新条目时间排）

@@ -282,7 +282,35 @@ class IntelFetcher:
             importance = _quick_score(item.title or "", item.content or "")
             raw = item.raw_data or {}
             raw["importance"] = importance
+            # 规范化去重指纹（跨源/跨版本, 2026-09-02: GDACS小时更新×10、
+            # NOAA CAP五版本、中新跨频道分发三案例）
+            from .intel_dedup import intel_fingerprint
+            raw["fp"] = intel_fingerprint(item.url or "", item.title or "")
             item.raw_data = raw
+
+        # 指纹查重: 同 norm_url+norm_title 只留首条, 后到的并入(印证+1)
+        from .intel_dedup import check_duplicate
+        unique_items = []
+        async with async_session() as db:
+            for item in items:
+                dup_id = await check_duplicate(db, (item.raw_data or {}).get("fp", ""))
+                if dup_id and dup_id != item.id:
+                    existing = await db.get(IntelItem, dup_id)
+                    if existing:
+                        raw = dict(existing.raw_data or {})
+                        raw["corroboration"] = int(raw.get("corroboration", 1)) + 1
+                        sources = raw.get("dup_sources") or []
+                        if item.source_id not in sources:
+                            sources.append(item.source_id)
+                        raw["dup_sources"] = sources
+                        existing.raw_data = raw
+                        self._stats["deduped"] = self._stats.get("deduped", 0) + 1
+                    continue
+                unique_items.append(item)
+            await db.commit()
+        items = unique_items
+        if not items:
+            return 0
 
         stored = 0
         async with async_session() as db:
