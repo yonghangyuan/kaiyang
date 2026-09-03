@@ -9,6 +9,7 @@ import LiveFeed from './LiveFeed'
 import EntityProfile from './EntityProfile'
 import WatchPanel from './WatchPanel'
 import FetchingMonitor from './FetchingMonitor'
+import LiveTVPanel from './LiveTVPanel'
 
 interface Briefing { query: string; summary: string; point_count: number; timeline_count: number; web_count?: number; points: any[]; timeline: any[] }
 
@@ -19,14 +20,26 @@ interface Props {
   stats?: {sources:number; intel:number; events:number; entities:number}
 }
 
+// 面板卡片壳（对标 WM 右侧仪表列——独立卡片+标题栏, 纵向滚动浏览）
+function PanelCard({ title, accent, children }: { title: string; accent: string; children: React.ReactNode }) {
+  return (
+    <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 6, marginBottom: 10, overflow: 'hidden' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 10px', borderBottom: '1px solid var(--border)', background: '#131a35' }}>
+        <span style={{ width: 3, height: 12, background: accent, borderRadius: 2 }} />
+        <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.08em', color: 'var(--fg-dim)', fontFamily: 'monospace' }}>{title}</span>
+      </div>
+      <div style={{ padding: 10 }}>{children}</div>
+    </div>
+  )
+}
+
 export default function Sidebar({ briefing, chatMessages, onSearch, onChat, status, onClearAnnotations, onFlyTo, stats }: Props) {
-  const [tab, setTab] = useState<'live'|'feed'|'chat'|'watch'>('live')
+  const [tab, setTab] = useState<'live'|'feed'|'tv'|'chat'|'watch'>('live')
   const [input, setInput] = useState('')
   const [graphEntity, setGraphEntity] = useState<string | null>(null)
   const [profileEntity, setProfileEntity] = useState<string | null>(null)
   const send = () => { const msg = input.trim(); if (!msg) return; setInput(''); tab === 'chat' ? onChat(msg) : onSearch(msg) }
 
-  const tColor = (t: any) => t.type==='web'?'#a855f7':t.type==='event'?'#eab308':'#3b82f6'
   const S: any = { tabBtn: (active: boolean) => ({
     flex:1,padding:8,textAlign:'center',fontSize:11,fontWeight:700,cursor:'pointer',
     letterSpacing:'0.05em',fontFamily:'monospace',background:'transparent',
@@ -37,8 +50,10 @@ export default function Sidebar({ briefing, chatMessages, onSearch, onChat, stat
   return (
     <div style={{ width:380, background:'var(--bg-card)', borderLeft:'1px solid var(--border)', display:'flex', flexDirection:'column' }}>
       <div style={{ display:'flex', borderBottom:'1px solid var(--border)' }}>
-        {(['live','feed','chat','watch'] as const).map(t => (
-          <button key={t} onClick={() => setTab(t)} style={S.tabBtn(tab===t)}>{{live:'实时',feed:'分析',chat:'对话',watch:'专题'}[t]}</button>
+        {(['live','feed','tv','chat','watch'] as const).map(t => (
+          <button key={t} onClick={() => setTab(t)} style={S.tabBtn(tab===t)}>
+            {{live:'实时',feed:'分析',tv:'频道',chat:'对话',watch:'专题'}[t]}
+          </button>
         ))}
       </div>
       {stats && <div style={{ display:'flex',gap:8,padding:'6px 12px',background:'#131a35',borderBottom:'1px solid var(--border)',fontSize:11 }}>
@@ -48,7 +63,7 @@ export default function Sidebar({ briefing, chatMessages, onSearch, onChat, stat
         <span style={{color:'var(--purple)'}}>{stats.entities}实体</span>
         <span style={{marginLeft:'auto',color:'var(--fg-dim)',fontSize:10}}>●EVT ●EQ ●SOC ●SRH ●ANO</span>
       </div>}
-      <div style={{ flex:1, overflow:'auto', padding:'10px 12px', fontSize:13 }}>
+      <div style={{ flex:1, overflowY:'auto', padding:'10px 12px', fontSize:13 }}>
         {tab === 'live' && (
           profileEntity
             ? <EntityProfile entityId={profileEntity} onClose={() => setProfileEntity(null)} />
@@ -65,9 +80,18 @@ export default function Sidebar({ briefing, chatMessages, onSearch, onChat, stat
           profileEntity
             ? <EntityProfile entityId={profileEntity} onClose={() => setProfileEntity(null)} />
             : <>
-                <FetchingMonitor /><BriefingCard /><ThreatDashboard /><WordCloud /><TrendChart /><PredictionCard />
+                {/* WM 式仪表列: 独立卡片纵向堆叠, 滚轮上下浏览 */}
+                <PanelCard title="PIPELINE 管道监控" accent="#38bdf8"><FetchingMonitor /></PanelCard>
+                <PanelCard title="BRIEF 情报简报" accent="var(--accent)"><BriefingCard /></PanelCard>
+                <PanelCard title="THREATCON 威胁等级" accent="#ef4444"><ThreatDashboard /></PanelCard>
+                <PanelCard title="CLOUD 关键词云" accent="#a855f7"><WordCloud /></PanelCard>
+                <PanelCard title="TREND 趋势" accent="#eab308"><TrendChart /></PanelCard>
+                <PanelCard title="FORECAST 预测" accent="#22c55e"><PredictionCard /></PanelCard>
                 {graphEntity && <EntityGraph entityId={graphEntity} onClose={() => setGraphEntity(null)} />}
               </>
+        )}
+        {tab === 'tv' && (
+          <PanelCard title="LIVE TV 直播频道" accent="var(--green)"><LiveTVPanel /></PanelCard>
         )}
         {tab === 'watch' && <WatchPanel />}
         {tab === 'chat' && (
