@@ -22,6 +22,7 @@ import jieba
 
 from ..db import async_session
 from ..models import Event, IntelItem, Source, _new_id, _utcnow
+from .event_classifier import classify_event
 from .scoring import score_event_importance
 
 
@@ -330,7 +331,9 @@ async def aggregate_events(limit: int = 200) -> dict:
                 id=_new_id("EV"),
                 title=best_item.title or "Untitled Event",
                 description=best_item.content or "",
-                event_type="news",  # Phase 2D 细化
+                # 2026-10-29: 规则分类器落地（替代 Phase 2D 占位 "news"）。
+                # 冲突/军事/灾害/政治/经济/社会/科技/other —— 简报按此过滤要闻。
+                event_type=classify_event(best_item.title or "", best_item.content or ""),
                 lat=best_item.lat,
                 lng=best_item.lng,
                 country_code=country or best_item.country_code,

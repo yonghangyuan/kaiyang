@@ -39,8 +39,13 @@ DSH 里直接说：
      已加 **24h 静默门**（`ZERO_YIELD_STALE_HOURS`）：零新增必须连续持续 24h 才允许自动暂停，中间任何一次新入库清零计时；复活源（`revived_at`）计入活跃度门，死源仍会在 24h 后被重新暂停。
    - 根因二：46 个源没有做主题分层。已按"情报价值"重排：地缘/国防/官方/财经启用，体育/气象/消费科技/重复源停用（明细见 §五）。
    - 残留：GDELT 本机网络下 `200 但 0 条 / 429`，已暂停待代理或服务器侧接入；事件分类仍只有 `news`（见 #2）。
-2. **事件分类只有 `news`**，severity/importance 区分度低（体育新闻也能进 Top）→ 简报 §二 暂不可全信。
-   行动：先看 `pipeline/` 里的事件分类器是否在用 LLM，修好再谈"重要度排序"。
+2. ✅ **已修（2026-10-29）事件分类**：`event_aggregator` 原来把 `event_type` 写死 `"news"`（Phase 2D 占位），
+   导致 `/api/events?event_type=conflict` 永远空、简报无法按类型过滤。现落地规则分类器
+   `pipeline/event_classifier.py`（冲突/军事/灾害/政治/经济/社会/科技/other，中英关键词 + 英文词边界，
+   标题命中 ×2），存量 288 条事件已回填；简报 §二 只放情报类并按严重度排序，
+   体育/科技进「其他动态」。LLM 恢复后规则结果可当 `classify_guard` 式基线夹板。
+   - 命令：`python tools/reclassify_events.py [--days N] [--dry-run]`（建议停机跑）
+   - 测试：`tests/test_event_classifier.py`（7 条）+ 回归套件 250 passed
 3. **专题批处理 8 周没跑**（`issues.watch_last_run` 停在 09-03），新情报进池但不产 findings。
    行动：服务常驻后观察 6h 是否自动跑一轮；不动就手动调 `issue_analyzer`。
 4. ✅ **已修（2026-10-28）看门狗**：计划任务 `KaiyangWatchdog` 每小时跑一次启动脚本（幂等，已监听则退出）。

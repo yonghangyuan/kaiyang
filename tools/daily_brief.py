@@ -18,6 +18,7 @@ import argparse
 import json
 import sqlite3
 import sys
+from collections import Counter
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -29,7 +30,10 @@ CST = timezone(timedelta(hours=8))
 TYPE_LABEL = {
     "conflict": "冲突", "disaster": "灾害", "political": "政治",
     "economic": "经济", "military": "军事", "social": "社会",
+    "tech": "科技", "other": "其他", "news": "未分类",
 }
+# 情报类（与 src/kaiyang/pipeline/event_classifier.INTEL_TYPES 保持一致）
+INTEL_TYPES = ("conflict", "military", "disaster", "political", "economic")
 
 
 def _parse_utc(value: str | None) -> datetime | None:
@@ -117,6 +121,13 @@ def build(hours: int, top: int) -> tuple[str, dict]:
     active_today = len(active_sources)
     total_today = len(new_items)
 
+    # 事件按「情报类优先、严重度优先」分桶（2026-10-29: event_type 规则分类落地后，
+    # 体育/消费电子不再和地缘冲突挤同一个重要度榜）
+    intel_events = [e for e in new_events if (e["event_type"] or "") in INTEL_TYPES]
+    other_events = [e for e in new_events if (e["event_type"] or "") not in INTEL_TYPES]
+    intel_events.sort(key=lambda e: (e["severity"] or 0, e["importance"] or 0), reverse=True)
+    other_events.sort(key=lambda e: (e["importance"] or 0), reverse=True)
+
     lines: list[str] = []
     add = lines.append
     add(f"# 开阳情报简报 · {local_now:%Y-%m-%d}")
@@ -143,7 +154,8 @@ def build(hours: int, top: int) -> tuple[str, dict]:
     add("## 一、概览")
     add("")
     add(f"- 新增情报 **{total_today}** 条，来自 **{active_today}** 个源")
-    add(f"- 关联事件 **{len(new_events)}** 个" + ("（按重要度排序见 §二）" if new_events else "（窗口内无聚合事件）"))
+    add(f"- 关联事件 **{len(new_events)}** 个（情报类 **{len(intel_events)}** 个"
+        + ("，按严重度排序见 §二" if intel_events else "，窗口内无情报类事件") + "）")
     if total_today:
         src_top = sorted(
             ((k, v) for k, v in
@@ -152,19 +164,33 @@ def build(hours: int, top: int) -> tuple[str, dict]:
         add("- 来源: " + " / ".join(f"{k} {v}" for k, v in src_top))
     if top_countries:
         add("- 地理: " + " / ".join(f"{k} {v}" for k, v in top_countries))
+    if new_events:
+        type_counts = Counter((e["event_type"] or "other") for e in new_events)
+        add("- 事件类型: " + " / ".join(
+            f"{TYPE_LABEL.get(k, k)} {v}" for k, v in type_counts.most_common()))
     add(f"- 追踪专题 **{len(watch_issues)}** 个，窗口内新增发现 **{len(new_findings)}** 条，待审批 **{pending}** 条")
     add("")
 
-    if new_events:
-        add(f"## 二、事件 Top {min(top, len(new_events))}（重要度）")
-        add("")
+    add(f"## 二、要闻事件 Top {min(top, len(intel_events))}（冲突/军事/灾害/政治/经济）")
+    add("")
+    if intel_events:
         add("| # | 事件 | 类型 | 严重度 | 佐证源 | 重要度 | 时间 |")
         add("|---|---|---|---|---|---|---|")
-        for idx, ev in enumerate(new_events[:top], 1):
+        for idx, ev in enumerate(intel_events[:top], 1):
             title = (ev["title"] or "").replace("|", "｜").strip()
             et = TYPE_LABEL.get(ev["event_type"] or "", ev["event_type"] or "—")
             add(f"| {idx} | {title} | {et} | {ev['severity'] or '—'} | "
                 f"{ev['corroboration_count'] or 0} | {ev['importance'] or '—'} | {_fmt_cst(ev['time_start'])} |")
+    else:
+        add("_窗口内无情报类事件。_")
+    add("")
+    if other_events:
+        add(f"### 其他动态（非情报类，仅供背景，共 {len(other_events)} 条）")
+        add("")
+        for ev in other_events[:5]:
+            title = (ev["title"] or "").strip()
+            et = TYPE_LABEL.get(ev["event_type"] or "", ev["event_type"] or "—")
+            add(f"- [{et}] {title} · 重要度 {ev['importance'] or '—'} · {_fmt_cst(ev['time_start'])}")
         add("")
 
     add(f"## 三、新增情报 Top {min(top, len(new_items))}")
