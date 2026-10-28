@@ -25,7 +25,10 @@ from ..models import IntelItem, Source
 NO_DATA_HOURS = 6          # 源这么久没抓到任何条目 → no_data
 FROZEN_DAYS = 30           # 最新条目发布时间距今超过 → frozen（存档僵尸feed）
 SILENT_ZERO_ROUNDS = 2     # 连续 N 轮"抓到 0 条" → silent_zero
-ZERO_YIELD_PAUSE = 3       # 连续 N 轮"抓到>0条但 0 新增" → 自动暂停
+ZERO_YIELD_PAUSE = 3       # 连续 N 轮"抓到>0条但 0 新增" → 零产出信号
+ZERO_YIELD_STALE_HOURS = 24  # 2026-10-28: 零产出现象必须持续这么久才允许自动暂停
+                             # （防 9-03 那类误杀：90s 轮询下 3 轮只有 4.5 分钟，
+                             #  慢更 RSS 一天几条是常态，不该判死）
 
 FRESHNESS_STATES = ("fresh", "no_data", "frozen", "silent_zero", "zero_yield")
 
@@ -52,14 +55,27 @@ async def note_round_result(source_id: str, fetched: int, stored: int) -> None:
         else:
             cfg["zero_fetch_streak"] = 0
             if stored == 0:
-                # 源活着但全是重复——慢性死亡特征
+                # 源活着但全是重复——慢性死亡特征。
+                # 2026-10-28 修订（9-03 大误杀复盘）: 仅凭"连续 3 轮零新增"就暂停，
+                # 在 90s 轮询下等于 4.5 分钟判死——慢更源(RSS 一天几条)被整批误杀。
+                # 现在必须"零新增连续持续 >= ZERO_YIELD_STALE_HOURS 小时"才允许暂停；
+                # 中间任何一次新入库都会清空计时。revived_at 计入活跃度门，复活的
+                # 死源仍会在静默满 24h 后被重新暂停。
                 zy = int(cfg.get("zero_yield_streak", 0)) + 1
                 cfg["zero_yield_streak"] = zy
-                if zy >= ZERO_YIELD_PAUSE and s.status == "active":
-                    if await _was_recently_productive(s.id):
+                since_s = cfg.get("zero_yield_since") or ""
+                try:
+                    since_dt = datetime.fromisoformat(since_s).replace(tzinfo=timezone.utc)
+                except (ValueError, TypeError):
+                    since_dt = datetime.now(timezone.utc)
+                    cfg["zero_yield_since"] = since_dt.isoformat()[:19]
+                quiet_h = (datetime.now(timezone.utc) - since_dt).total_seconds() / 3600.0
+                if (zy >= ZERO_YIELD_PAUSE and quiet_h >= ZERO_YIELD_STALE_HOURS
+                        and s.status == "active"):
+                    if await _was_recently_productive(s):
                         s.status = "paused"
                         cfg["paused_reason"] = (
-                            f"zero_yield: 连续{zy}轮抓到条目但0新入库 "
+                            f"zero_yield: 连续{zy}轮/静默{quiet_h:.1f}h 抓到条目但0新入库 "
                             f"({datetime.now(timezone.utc).isoformat()[:19]})"
                         )
                     else:
@@ -67,18 +83,29 @@ async def note_round_result(source_id: str, fetched: int, stored: int) -> None:
                         cfg["freshness_state"] = "zero_yield_low_freq"
             else:
                 cfg["zero_yield_streak"] = 0
+                cfg.pop("zero_yield_since", None)
                 cfg["freshness_state"] = "fresh"
         s.config = cfg
         await db.commit()
 
 
-async def _was_recently_productive(source_id: str, days: int = 7) -> bool:
-    """近 N 天内有过新条目入库的源才算"曾经高产"——zero_yield 暂停的前置门。"""
+async def _was_recently_productive(s: Source, days: int = 7) -> bool:
+    """近 N 天内有过新条目入库（或近 N 天内刚被复活）的源才算"曾经高产"。
+
+    2026-10-28: 复活源没有近 7 天入库记录，若不看 revived_at，
+    被复活后发现是死源也永远不会再被暂停。"""
     since = datetime.now(timezone.utc) - timedelta(days=days)
+    cfg = dict(s.config or {})
+    revived_at = cfg.get("revived_at") or ""
+    try:
+        if revived_at and datetime.fromisoformat(revived_at).replace(tzinfo=timezone.utc) > since:
+            return True
+    except (ValueError, TypeError):
+        pass
     async with async_session() as db:
         n = (await db.execute(
             select(func.count()).select_from(IntelItem).where(
-                IntelItem.source_id == source_id,
+                IntelItem.source_id == s.id,
                 IntelItem.fetched_at > since,
             ))).scalar()
     return (n or 0) > 0
@@ -100,10 +127,11 @@ async def revive_paused_sources() -> dict:
             if "zero_yield" not in str(cfg.get("paused_reason", "")):
                 stats["kept"] += 1
                 continue
-            if await _was_recently_productive(s.id, days=14):
+            if await _was_recently_productive(s, days=14):
                 s.status = "active"
                 cfg["freshness_state"] = "fresh"
                 cfg["zero_yield_streak"] = 0
+                cfg.pop("zero_yield_since", None)
                 cfg["revived_at"] = datetime.now(timezone.utc).isoformat()[:19]
                 s.config = cfg
                 stats["revived"].append(s.name)

@@ -135,11 +135,12 @@ async def mcp_handler(request: Request):
             if exceeded:
                 text = budget_exceeded_envelope(budget, text_bytes, jmespath_used)
             # SDK v2 校验: 声明了 outputSchema 的工具必须返回 structuredContent
-            # （否则客户端 call_tool 直接 RuntimeError）。text 与 structured 同源。
-            try:
-                structured = json.loads(text) if text.startswith(("{", "[")) else None
-            except json.JSONDecodeError:
-                structured = None
+            # （否则客户端 call_tool 直接 RuntimeError），且必须符合 outputSchema。
+            # 2026-10-28 实测: jmespath 投影后形状常不符合 schema（如 items[].title
+            # 变成字符串数组），DSH/ToolRuntime 会以 "does not match output schema" 拒收。
+            # 因此: content.text = 投影后的瘦身版（模型实际读的），
+            #       structuredContent = 未投影的原始结果（天然符合 outputSchema）。
+            structured = result if isinstance(result, dict) else None
             return JSONResponse(_rpc_ok({
                 "content": [{"type": "text", "text": text}],
                 **({"structuredContent": structured} if structured is not None else {}),
