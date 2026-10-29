@@ -67,6 +67,11 @@ DSH 里直接说：
    aware → UTC；naive → 按 `Source.config.feed_tz_offset_hours` 换算；未来时间兜底钳制。
    存量 **2464 条 items + 297 个事件**时间已回填（`tools/backfill_timezone.py`），
    修后未来时间条目 **65 → 0**。
+8. ✅ **已修（2026-10-29）SQLite 并发锁**：`db.py` 连接级 PRAGMA 改为 **WAL +
+   busy_timeout=15s + synchronous=NORMAL**（原来 rollback journal + 5s 超时，
+   抓取批量写库时 startup 后台任务读会被锁死，偶发 `database is locked`）。
+   `init_db` 补 `from . import models` 保证建表不依赖导入顺序。
+   回归工具 `tools/stress_db.py`：4写+4读×10s → 5200 写 / 2422 读 / **0 错误**。
 
 ## 四、不建议现在做
 

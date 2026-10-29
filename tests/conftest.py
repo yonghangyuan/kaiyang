@@ -29,9 +29,14 @@ os.environ.setdefault("KAIYANG_LLM_OFF", "1")
 
 
 def _cleanup_test_db() -> None:
+    # WAL 模式会额外产生 -wal / -shm 文件（2026-10-29 起测试库也是 WAL）
+    for suffix in ("", "-wal", "-shm"):
+        try:
+            os.remove(_path + suffix)
+        except OSError:
+            pass
     try:
         os.close(_fd)
-        os.remove(_path)
     except OSError:
         pass
 

@@ -24,13 +24,32 @@ class Base(DeclarativeBase):
 # 构建引擎
 _connect_args: dict = {}
 if settings.using_sqlite:
-    _connect_args = {"check_same_thread": False}
+    # timeout=15: sqlite3 的 busy timeout（秒），锁等待而非立即报错
+    _connect_args = {"check_same_thread": False, "timeout": 15}
 
 engine = create_async_engine(
     settings.database_url,
     echo=False,
     connect_args=_connect_args,
 )
+
+if settings.using_sqlite:
+    # 2026-10-29: WAL + busy_timeout —— 消除并发读写 "database is locked"。
+    # 原默认 rollback journal + 5s busy timeout: 抓取批量写库时，startup 后台任务
+    # （FTS 同步/分类/地理标注）的读会被阻塞，偶发 OperationalError: database is locked。
+    # WAL 允许"读不阻塞写、写不阻塞读"；busy_timeout 给写锁排队 15s；NORMAL 同步
+    # 在 WAL 下已足够安全（掉电最多丢最后一个 checkpoint 之后的事务）。
+    from sqlalchemy import event
+
+    @event.listens_for(engine.sync_engine, "connect")
+    def _sqlite_concurrency_pragmas(dbapi_conn, _record):  # noqa: ANN001
+        cur = dbapi_conn.cursor()
+        try:
+            cur.execute("PRAGMA journal_mode=WAL")
+            cur.execute("PRAGMA synchronous=NORMAL")
+            cur.execute("PRAGMA busy_timeout=15000")
+        finally:
+            cur.close()
 
 async_session = async_sessionmaker(
     engine,
@@ -51,6 +70,8 @@ async def get_db() -> AsyncSession:
 async def init_db() -> None:
     """创建所有表 + FTS5 全文索引 + 轻量列迁移（幂等）。"""
     from sqlalchemy import text
+
+    from . import models  # noqa: F401  # 确保所有 ORM 表注册到 Base.metadata
 
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
