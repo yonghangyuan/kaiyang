@@ -25,15 +25,15 @@ const GLYPHS: Record<string, string> = {
   military: '<path d="M12 3l6.8 2.7v5c0 4.3-2.8 7.3-6.8 9-4-1.7-6.8-4.7-6.8-9v-5z"/><path d="M12 8v4.2"/><circle cx="12" cy="15" r="1.1"/>',
   // 灾害：警示三角
   disaster: '<path d="M12 3.6L20.8 19H3.2z"/><path d="M12 9.2v4.1"/><circle cx="12" cy="16.1" r="1.05"/>',
-  // 政治：旗帜
-  political: '<path d="M6.2 3.5v17"/><path d="M6.2 4.6h10.2l-2.3 3.4 2.3 3.4H6.2"/>',
+  // 政治：议会/殿堂（比旗帜在 20px 下更易辨识，不会看成字母 P）
+  political: '<path d="M12 3.6l7 3.5H5z"/><path d="M6.6 9.3v5.9M9.7 9.3v5.9M14.3 9.3v5.9M17.4 9.3v5.9"/><path d="M4.8 17.2h14.4"/>',
   // 经济：趋势线
   economic: '<path d="M4 18.4l5.1-5.1 2.9 2.3L19.5 8"/><path d="M14.6 8h4.9v4.9"/>',
   // 社会：人群
   social: '<circle cx="9.2" cy="8.4" r="2.6"/><path d="M3.9 19c0-3 2.3-5 5.3-5s5.3 2 5.3 5"/><circle cx="16.6" cy="9.6" r="2"/><path d="M15.2 14.4c2.4.5 4 2.1 4 4.6"/>',
   // 科技：芯片
   tech: '<rect x="7" y="7" width="10" height="10" rx="2.2"/><path d="M10 3.2v3.8M14 3.2v3.8M10 17v3.8M14 17v3.8M3.2 10h3.8M3.2 14h3.8M17 10h3.8M17 14h3.8"/>',
-  other: '<circle cx="12" cy="12" r="6.2"/><circle cx="12" cy="12" r="1.5"/>',
+  other: '<path d="M12 8.8l3.2 3.2-3.2 3.2-3.2-3.2z"/>',
   // 地震波形
   quake: '<path d="M2.4 12.6h4l2-5.6 3 11.2 2.6-8.4 1.8 2.8h5.8"/>',
   search: '<circle cx="10.6" cy="10.6" r="5.4"/><path d="M14.6 14.6l4.6 4.6"/>',
@@ -52,14 +52,17 @@ export interface PinOpts {
   pulse?: 'slow' | 'fast' | null
   label?: string
   animate?: boolean
+  /** circle=新闻事件（圆环）；square=静态设施（小方徽章，视觉上区分"动态/静态"） */
+  shape?: 'circle' | 'square'
 }
 
-/** 圆形/圆角徽章图标：主题色底 + 白色线性图标；severity 高时带慢/快脉冲环。 */
+/** HUD 圆环徽章：深色玻璃底 + 类型色细环 + 类型色线性图标；severity 高时带慢/快脉冲环。 */
 export function pinIcon(kind: string, color: string, opts: PinOpts = {}): L.DivIcon {
-  const size = Math.round(opts.size ?? 22)
+  const size = Math.round(opts.size ?? 20)
   const glyph = GLYPHS[kind] ?? GLYPHS.other
   const cls = ['ky-pin']
   if (opts.pulse) cls.push(`ky-pin--pulse-${opts.pulse}`)
+  if (opts.shape === 'square') cls.push('ky-pin--square')
   if (opts.animate === false) cls.push('ky-pin--static')
   const label = opts.label ? `<span class="ky-pin__label">${opts.label}</span>` : ''
   const html =

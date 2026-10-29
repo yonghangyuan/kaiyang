@@ -26,3 +26,6 @@ reports/*.log
 # 截图/临时验证产物
 tools/*-shot.png
 task_backups/
+
+# UI 截图（开发验证产物）
+tools/*.png

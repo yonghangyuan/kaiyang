@@ -111,7 +111,11 @@ export default function MapView({ events, searchResults, annotations, chain, fly
       'Annotations': L.layerGroup(),
       'Search Results': L.layerGroup(),
     }
-    Object.entries(overlays).forEach(([, g]) => g.addTo(map))
+    Object.entries(overlays).forEach(([name, g]) => {
+      // 设施库是 200 个静态点位，默认不压在地图上（避免盖住新闻事件），
+      // 需要时在右下角图层控制里勾选。
+      if (name !== '设施库') g.addTo(map)
+    })
     groupsRef.current = overlays
 
     L.control.layers(baseTiles, overlays as any, { position: 'bottomright', collapsed: true }).addTo(map)
@@ -175,7 +179,7 @@ export default function MapView({ events, searchResults, annotations, chain, fly
     diffMarkers(caches.event, g['实时事件'], others, (e, isNew) => {
       const sev = e.severity || 1
       const kind = eventKind(e.event_type)
-      const size = Math.round(20 + sev * 1.6)
+      const size = Math.round(17 + sev * 1.15)
       const pulse = sev >= 7 ? 'fast' : sev >= 5 ? 'slow' : null
       const tip = `${(e.title || '').substring(0, 42)}`
       return L.marker([e.lat, e.lng], {
@@ -190,7 +194,7 @@ export default function MapView({ events, searchResults, annotations, chain, fly
     diffMarkers(caches.quake, g['地震'], quakes, (e, isNew) => {
       const mag = parseFloat((e.title || '').match(/M(\d+\.?\d*)/)?.[1] || '0')
       const color = mag >= 7 ? '#7f1d1d' : mag >= 6 ? '#dc2626' : mag >= 5 ? '#f97316' : '#eab308'
-      const size = Math.min(22 + mag * 4, 46)
+      const size = Math.min(20 + mag * 3.4, 40)
       return L.marker([e.lat, e.lng], {
         icon: pinIcon('quake', color, { size, label: `M${mag.toFixed(1)}`, pulse: mag >= 6 ? 'fast' : null, animate: isNew }),
         riseOnHover: true,
@@ -201,7 +205,7 @@ export default function MapView({ events, searchResults, annotations, chain, fly
     diffMarkers(caches.search, g['Search Results'], searchResults, (e, isNew) => {
       const extra = e.url ? `<br><a href="${escHtml(e.url)}" target="_blank" style="font-size:11px;color:#60a5fa">source ↗</a>` : ''
       return L.marker([e.lat, e.lng], {
-        icon: pinIcon('search', '#38bdf8', { size: 24, animate: isNew }),
+        icon: pinIcon('search', '#38bdf8', { size: 22, animate: isNew }),
         riseOnHover: true,
         keyboard: false,
       } as any).bindPopup(`<div style="max-width:280px"><b>${escHtml(e.title || '')}</b><br><small style="color:#64748b">${e.country_code || ''}${extra}</small></div>`)
@@ -220,7 +224,7 @@ export default function MapView({ events, searchResults, annotations, chain, fly
           .bindPopup(`<b>${escHtml(a.name)}</b><br><small>${escHtml(a.description || '')}</small>`).addTo(g['Annotations'])
       } else if (a.type === 'point' && Array.isArray(coords) && coords.length >= 2) {
         L.marker([coords[0] as number, coords[1] as number], {
-          icon: pinIcon('annotation', '#a855f7', { size: 26 }),
+          icon: pinIcon('annotation', '#a855f7', { size: 24 }),
           riseOnHover: true,
         } as any).bindPopup(`<b>${escHtml(a.name)}</b><br><small>${escHtml(a.description || '')}</small>`).addTo(g['Annotations'])
       }
@@ -267,7 +271,7 @@ export default function MapView({ events, searchResults, annotations, chain, fly
           airport: '机场', spaceport: '航天港', chokepoint: '咽喉要道',
         }
         L.marker([f.lat, f.lng], {
-          icon: pinIcon(kind, color, { size: 20 }),
+          icon: pinIcon(kind, color, { size: 17, shape: 'square' }),
           riseOnHover: true,
         } as any).bindPopup(`<b>${typeLabel[f.type] || '设施'} · ${escHtml(f.name)}</b><br><small>${escHtml(f.country || '')} | 威胁:${f.threat}/5<br>${escHtml(f.description || '')}</small>`).addTo(g['设施库'])
       })
@@ -319,7 +323,7 @@ export default function MapView({ events, searchResults, annotations, chain, fly
         pts.forEach(p => {
           if (!p.lat || !p.lng) return
           L.marker([p.lat, p.lng], {
-            icon: pinIcon(eventKind(p.event_type), relationColor(p.relation), { size: 22 }),
+            icon: pinIcon(eventKind(p.event_type), relationColor(p.relation), { size: 20 }),
             riseOnHover: true,
           } as any).bindPopup(`<div style="max-width:280px"><b>${escHtml(p.title || '')}</b><br><small style="color:#64748b">${escHtml(p.issue_title || '')} | ${p.relation || ''} | ${p.time_start?.substring(0, 10) || ''} | conf:${p.confidence}</small></div>`)
             .addTo(layer)
@@ -338,13 +342,15 @@ export default function MapView({ events, searchResults, annotations, chain, fly
       <div className="ky-legend">
         <span className="ky-legend__title">图例</span>
         {(Object.keys(TYPE_COLORS) as (keyof typeof TYPE_COLORS)[]).slice(0, 7).map(k => (
-          <span key={k} className="ky-legend__item">
-            <i style={{ background: TYPE_COLORS[k] }} />
-            {{ conflict: '冲突', military: '军事', disaster: '灾害', political: '政治', economic: '经济', social: '社会', tech: '科技' }[k]}
+          <span key={k} className="ky-legend__item" style={{ color: TYPE_COLORS[k] }}>
+            <i />
+            <em style={{ fontStyle: 'normal', color: '#94a3b8' }}>
+              {{ conflict: '冲突', military: '军事', disaster: '灾害', political: '政治', economic: '经济', social: '社会', tech: '科技' }[k]}
+            </em>
           </span>
         ))}
         <span className="ky-legend__sep" />
-        <span className="ky-legend__item"><i className="ky-legend__ring" />高危脉冲</span>
+        <span className="ky-legend__item" style={{ color: '#ef4444' }}><i className="ky-legend__ring" />高危脉冲</span>
       </div>
 
       {/* 专题图层管理面板 */}

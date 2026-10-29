@@ -156,21 +156,30 @@ body::after {
 .ky-pin:hover { transform: scale(1.18); filter: brightness(1.15); z-index: 1200 !important; }
 .ky-pin__body {
   position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
-  border-radius: 34%;
-  background:
-    linear-gradient(158deg, rgba(255,255,255,0.34) 0%, rgba(255,255,255,0.05) 45%, rgba(0,0,0,0.32) 100%),
-    var(--ky-c, #64748b);
-  border: 1.5px solid rgba(255,255,255,0.52);
-  box-shadow: 0 3px 10px rgba(0,0,0,0.52), inset 0 1px 2px rgba(255,255,255,0.4);
+  border-radius: 50%;
+  background: radial-gradient(circle at 50% 36%, rgba(24, 34, 50, 0.97) 0%, rgba(9, 14, 21, 0.95) 74%);
+  border: 1.5px solid var(--ky-c, #64748b);
+  box-shadow:
+    0 0 0 1px rgba(2, 6, 10, 0.55),
+    0 2px 7px rgba(0, 0, 0, 0.55),
+    0 0 12px -2px var(--ky-c, #64748b);
+  transition: box-shadow 0.18s ease, border-color 0.18s ease;
 }
 .ky-pin__body svg {
-  width: 60%; height: 60%; fill: none; stroke: #fff; stroke-width: 2;
+  width: 52%; height: 52%; fill: none; stroke: var(--ky-c, #e2e8f0); stroke-width: 1.9;
   stroke-linecap: round; stroke-linejoin: round;
-  filter: drop-shadow(0 1px 1px rgba(0,0,0,0.45));
+  filter: drop-shadow(0 0 2px rgba(0, 0, 0, 0.65));
+}
+.ky-pin:hover .ky-pin__body {
+  border-color: rgba(255, 255, 255, 0.85);
+  box-shadow:
+    0 0 0 1px rgba(2, 6, 10, 0.55),
+    0 3px 10px rgba(0, 0, 0, 0.6),
+    0 0 18px -1px var(--ky-c, #64748b);
 }
 .ky-pin__halo {
   position: absolute; inset: 0; border-radius: 50%;
-  border: 2px solid var(--ky-c, #fff); opacity: 0; pointer-events: none;
+  border: 1px solid var(--ky-c, #fff); opacity: 0; pointer-events: none;
 }
 .ky-pin--pulse-slow .ky-pin__halo { animation: ky-ring 2.8s cubic-bezier(0.2, 0.6, 0.35, 1) infinite; }
 .ky-pin--pulse-fast .ky-pin__halo { animation: ky-ring 1.9s cubic-bezier(0.2, 0.6, 0.35, 1) infinite; }
@@ -188,6 +197,10 @@ body::after {
   70% { opacity: 0.18; }
   100% { transform: scale(2.4); opacity: 0; }
 }
+
+/* 静态设施：小方徽章（与新闻事件圆环视觉区分） */
+.ky-pin--square .ky-pin__body { border-radius: 20%; opacity: 0.92; }
+.ky-pin--square .ky-pin__body svg { width: 48%; height: 48%; }
 
 /* 事件链编号节点 */
 .ky-node {
@@ -221,7 +234,7 @@ body::after {
 }
 .ky-legend__title { color: #e2c860; font-weight: 700; letter-spacing: 0.08em; }
 .ky-legend__item { display: inline-flex; align-items: center; gap: 4px; }
-.ky-legend__item i { width: 7px; height: 7px; border-radius: 2px; display: inline-block; }
+.ky-legend__item i { width: 8px; height: 8px; border-radius: 50%; display: inline-block; background: transparent !important; border: 1.5px solid currentColor; }
 .ky-legend__sep { width: 1px; height: 10px; background: rgba(148, 163, 184, 0.3); }
 .ky-legend__ring {
   width: 8px; height: 8px; border-radius: 50%; background: transparent !important;
