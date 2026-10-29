@@ -61,6 +61,12 @@ DSH 里直接说：
 5. ✅ **已修（2026-10-29）**：LLM 不再依赖天枢云服务（`pipeline/llm.py` 直连 DeepSeek，
    复用 DSH 凭据）。`KAIYANG_TIANSHU_BASE_URL` 现在只是第三级兜底，建议在 `.env` 里删掉或改指本地。
 6. 简报暂无 LLM 摘要 → 先用结构化版跑 3 天，有感觉了再加。
+7. ✅ **已修（2026-10-29）时间归一**：SQLite 绑定会丢 tzinfo——带 `+0900/+0800/+0300`
+   的 RSS 发布时间被存成"源本地墙上时间"当 UTC 用（简报因此出现"未来 9 小时"）；
+   html 抓取也把本地时间直接标成 UTC。新增 `pipeline/time_norm.py`（入库统一 **naive UTC**）：
+   aware → UTC；naive → 按 `Source.config.feed_tz_offset_hours` 换算；未来时间兜底钳制。
+   存量 **2464 条 items + 297 个事件**时间已回填（`tools/backfill_timezone.py`），
+   修后未来时间条目 **65 → 0**。
 
 ## 四、不建议现在做
 

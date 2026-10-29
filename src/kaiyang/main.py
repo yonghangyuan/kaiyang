@@ -105,13 +105,27 @@ async def _seed_default_sources():
                 existing_config = dict(existing.config or {})
                 if not existing_config.get("credibility_manual"):
                     existing.config = {**existing_config, "credibility_manual": True}
+        # 2026-10-29: 解析器只能拿到"墙上时间"的源 → 标注本地时区，
+        # 入库时由 pipeline/time_norm 减去得到 UTC（aware feed 不需要）。
+        _feed_tz = {
+            "Ecns.cn": 8,
+            "中国军网": 8,
+            "人民网国际": 8,
+            "央视新闻国际": 8,
+        }
         # 2026-08-25 大清扫: 僵尸源删除 / 专题源暂停（幂等——不在名单里的不碰）
         result = await db.execute(select(Source))
         for s in result.scalars():
             if s.name in _retire_delete:
                 await db.delete(s)
-            elif s.name in _retire_pause and s.status == "active":
+                continue
+            if s.name in _retire_pause and s.status == "active":
                 s.status = "paused"
+            if s.name in _feed_tz:
+                cfg = dict(s.config or {})
+                if cfg.get("feed_tz_offset_hours") != _feed_tz[s.name]:
+                    cfg["feed_tz_offset_hours"] = _feed_tz[s.name]
+                    s.config = cfg
         await db.commit()
 
 

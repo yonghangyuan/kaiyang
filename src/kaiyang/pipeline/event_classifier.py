@@ -60,11 +60,11 @@ _KEYWORDS: dict[str, tuple[str, ...]] = {
         "defense chiefs", "security dialogue",
     ),
     "disaster": (
-        "地震", "洪水", "台风", "山火", "海啸", "干旱", "暴雨", "泥石流", "坍塌",
+        "地震", "洪水", "台风", "山火", "森林火", "林火", "海啸", "干旱", "暴雨", "泥石流", "坍塌",
         "垮塌", "坠机", "坠毁", "车祸", "事故", "相撞", "脱轨", "火灾", "失联",
         "救援", "灾害", "山体滑坡", "火山", "气象预警",
         "earthquake", "flood", "typhoon", "hurricane", "wildfire", "tsunami", "drought",
-        "landslide", "crash", "disaster", "advisory", "storm",
+        "landslide", "crash", "disaster", "advisory", "storm", "forest fire", "fire",
     ),
     "political": (
         "选举", "议会", "法案", "政府", "总统", "首相", "外长", "外交", "峰会",

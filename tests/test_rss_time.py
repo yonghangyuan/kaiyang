@@ -29,11 +29,15 @@ class TestParsePublished:
         assert dt is not None and dt.year == 2025 and dt.month == 6
 
     def test_iso_date_people_style(self):
-        """人民日报形态: 纯日期 '2025-06-05'。"""
+        """人民日报形态: 纯日期 '2025-06-05'。
+
+        2026-10-29 起: 无时区的时间返回 **naive 墙上时间**，由入库层
+        (pipeline/time_norm.py + Source.config.feed_tz_offset_hours) 归一为 UTC。
+        """
         dt = RSSSource._parse_published("2025-06-05")
         assert dt is not None
         assert (dt.year, dt.month, dt.day) == (2025, 6, 5)
-        assert dt.tzinfo is not None
+        assert dt.tzinfo is None
 
     def test_iso_datetime(self):
         dt = RSSSource._parse_published("2026-08-21T00:39:00")
@@ -77,7 +81,7 @@ class TestStaleFilter:
         """3 小时前的正常新闻保留，且 published_at 用真实时间（非抓取时间）。"""
         rss = RSSSource(_src())
         fresh = (datetime.now(timezone.utc) - timedelta(hours=3)).strftime("%Y-%m-%dT%H:%M:%S")
-        before = datetime.now(timezone.utc)
+        before_naive = datetime.now(timezone.utc).replace(tzinfo=None)
         item = rss._parse({
             "title": "fresh news",
             "link": "https://example.com/a",
@@ -85,8 +89,8 @@ class TestStaleFilter:
             "published": fresh,
         })
         assert item is not None
-        # published_at ≈ 3 小时前，绝不是"现在"（fallback 特征）
-        assert item.published_at < before - timedelta(hours=2)
+        # 无时区字符串 → naive 墙上时间（入库层再做时区归一），绝不是"现在"
+        assert item.published_at < before_naive - timedelta(hours=2)
 
     def test_no_date_falls_back_to_now(self):
         """无日期条目仍走 fallback-now（多数源有合法日期，异常源由健康检测兜底）。"""

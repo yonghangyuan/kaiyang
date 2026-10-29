@@ -106,10 +106,12 @@ class RSSSource(AbstractSource):
         if not published_str:
             return None
         s = published_str.strip()
-        # 1) ISO 家族（fromisoformat 通吃毫秒/时区/Z 后缀；naive 补 UTC）
+        # 1) ISO 家族（fromisoformat 通吃毫秒/时区/Z 后缀）
+        # 2026-10-29: naive 时间**不再补 UTC**——交给 pipeline/time_norm 按
+        # Source.config.feed_tz_offset_hours 归一；补 UTC 会把本地墙上时间当 UTC。
         try:
             dt = datetime.fromisoformat(s.replace("Z", "+00:00"))
-            return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+            return dt
         except ValueError:
             pass
         # 2) RFC822（标准 RSS 日期）
@@ -122,7 +124,7 @@ class RSSSource(AbstractSource):
         cn = re.match(r"(\d{4})年(\d{1,2})月(\d{1,2})日\s*(\d{1,2}):(\d{2})", s)
         if cn:
             y, mo, d, h, mi = map(int, cn.groups())
-            return datetime(y, mo, d, h, mi, tzinfo=timezone.utc)
+            return datetime(y, mo, d, h, mi)  # naive 墙上时间，时区归一见 time_norm
         return None
 
     def _parse(self, raw_item: dict[str, Any]) -> IntelItem | None:
@@ -139,11 +141,21 @@ class RSSSource(AbstractSource):
         # 解析不出时间的条目仍走 fallback-now——多数 RSS 都带合法日期，真异常源
         # 由 source_health 的"静默归零"检测兜底。
         if published is not None:
-            age = datetime.now(timezone.utc) - published
+            # naive（无 tz 的源）拿来做年龄比较时先按 UTC 视之——30 天门槛足够粗
+            pub_cmp = published if published.tzinfo else published.replace(tzinfo=timezone.utc)
+            age = datetime.now(timezone.utc) - pub_cmp
             if age > timedelta(days=self.MAX_AGE_DAYS):
                 return None
 
-        published_str = published.isoformat() if published else ""
+        # id 稳定性（2026-10-29 时区归一改造）: naive 墙上时间沿用历史 "+00:00"
+        # 后缀参与哈希，保证同一 URL 不会因为这次改造换 id 而重复入库；
+        # 入库的 published_at 再由 fetcher 归一回真 UTC。
+        if published:
+            published_str = published.isoformat()
+            if published.tzinfo is None and not published_str.endswith(("+00:00", "Z")):
+                published_str += "+00:00"
+        else:
+            published_str = ""
 
         item_id = self._make_item_id(link, published_str)
         content = self._clean_html(raw_item.get("summary", ""))

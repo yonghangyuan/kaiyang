@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import asyncio
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import select
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
@@ -149,8 +149,9 @@ class IntelFetcher:
                     items = []  # 重试耗尽后返回空
                 self._stats["fetched"] += len(items)
 
-                # 批量存入数据库（去重）
-                stored = await self._store_items(items)
+                # 时区归一: 无 tz 的源按其本地时区换算（Source.config.feed_tz_offset_hours）
+                tz_hours = float((source_record.config or {}).get("feed_tz_offset_hours") or 0)
+                stored = await self._store_items(items, assume_tz_hours=tz_hours)
                 self._stats["stored"] += stored
                 self._stats["skipped"] += len(items) - stored
 
@@ -246,15 +247,30 @@ class IntelFetcher:
 
         return self._stats
 
-    async def _store_items(self, items: list[IntelItem]) -> int:
+    async def _store_items(self, items: list[IntelItem],
+                           assume_tz_hours: float = 0.0) -> int:
         """批量存储情报条目——参考 MediaCrawler store 模式：批量 upsert。
 
         使用 INSERT ... ON CONFLICT DO UPDATE 替代逐条 merge，
         性能提升 ~10x，消除 SAWarning。
         返回实际新增数（INSERT 成功数）。
+
+        2026-10-29: 入库时间统一成 naive UTC。SQLite 的 SQLAlchemy DATETIME 绑定
+        会丢掉 tzinfo、只写墙上时间——aware 的 +0900 发布时间会被存成"首尔墙上
+        时间"，读出来当 UTC 就让简报出现"未来 9 小时"。
         """
         if not items:
             return 0
+
+        from .time_norm import normalize_to_utc_naive
+        now_naive = datetime.now(timezone.utc).replace(tzinfo=None)
+        for item in items:
+            item.published_at = normalize_to_utc_naive(item.published_at, assume_tz_hours)
+            item.fetched_at = normalize_to_utc_naive(item.fetched_at)
+            # 兜底: 个别源偶发"未来时间"（时区标注错/预发布）→ 钳到抓取时刻，
+            # 保证全库 published_at 不超过 now，否则简报时间和重要度排序会失真。
+            if item.published_at and item.published_at > now_naive + timedelta(minutes=10):
+                item.published_at = item.fetched_at or now_naive
 
         # URL 信任门（对标 Redroom referenceChecker）: 无效 URL 拦截，有效 URL 写信任分
         from .url_trust import check_url

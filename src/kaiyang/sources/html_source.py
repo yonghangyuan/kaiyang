@@ -41,35 +41,35 @@ def _date_from_url(url: str) -> datetime | None:
     m = _URL_DATE.search(url)
     if m:
         try:
-            return datetime(2000 + int(m.group(1)), int(m.group(2)), int(m.group(3)),
-                            tzinfo=timezone.utc)
+            # 2026-10-29: 返回 naive 墙上时间（URL 里的日期是站点本地日期），
+            # 由 pipeline/time_norm 按 Source.config.feed_tz_offset_hours 归一。
+            return datetime(2000 + int(m.group(1)), int(m.group(2)), int(m.group(3)))
         except ValueError:
             return None
     return None
 
 
 def _parse_time(text: str, fmts: list[str] | None) -> datetime:
-    """时间文本 → aware datetime。猜不到就 now（防御: 旧稿防御已有 30 天门兜底）。"""
-    """时间文本 → aware datetime。猜不到就 now（防御: 旧稿防御已有 30 天门兜底）。"""
+    """时间文本 → naive 墙上时间（时区归一见 pipeline/time_norm.py）。"""
     text = (text or "").strip()
     if fmts:
         for f in fmts:
             try:
-                return datetime.strptime(text, f).replace(tzinfo=timezone.utc)
+                return datetime.strptime(text, f)
             except ValueError:
                 continue
     # 自动猜
     m = re.search(r"(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})", text)
     if m:
-        return datetime(*map(int, m.groups()), tzinfo=timezone.utc)
+        return datetime(*map(int, m.groups()))
     m = re.search(r"(\d{4})-(\d{2})-(\d{2})", text)
     if m:
-        return datetime(*map(int, m.groups()), tzinfo=timezone.utc)
+        return datetime(*map(int, m.groups()))
     m = re.search(r"(\d{1,2})月(\d{1,2})日\s*(\d{1,2}):(\d{2})", text)
     if m:
         now = datetime.now(timezone.utc)
         return datetime(now.year, int(m.group(1)), int(m.group(2)),
-                        int(m.group(3)), int(m.group(4)), tzinfo=timezone.utc)
+                        int(m.group(3)), int(m.group(4)))
     return datetime.now(timezone.utc)
 
 
