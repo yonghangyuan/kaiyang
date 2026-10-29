@@ -138,13 +138,20 @@ async def review_finding(finding_id: str, req: ReviewRequest):
                     evidence = f"{p.get('title', '')} {p.get('evidence', '')}"
                     capped_level, _ = cap_llm_level(llm_level, evidence)
                     final_sev = {"info": 2, "low": 3, "medium": 5, "high": 7, "critical": 9}[capped_level]
+                    # 2026-10-29: 批准入链的事件原来 event_type 写死 "conflict"、
+                    # importance 为空（简报里显示"—"且排序偏后）。改为规则分类 + 五维重要度。
+                    from ..pipeline.event_aggregator import _compute_importance
+                    from ..pipeline.event_classifier import classify_event
+                    now_ts = _utcnow()
+                    ev_title = str(p.get("title", f.content[:50]))
                     ev = Event(
                         id=_new_id("EV"),
-                        title=str(p.get("title", f.content[:50])),
+                        title=ev_title,
                         description=f.content,
-                        event_type="conflict",
-                        time_start=_utcnow(),
+                        event_type=classify_event(ev_title, f.content),
+                        time_start=now_ts,
                         severity=final_sev,
+                        importance=_compute_importance(final_sev, 1, now_ts.timestamp(), tier=None),
                         source_items=[],
                     )
                     db.add(ev)

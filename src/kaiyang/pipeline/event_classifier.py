@@ -56,9 +56,11 @@ _KEYWORDS: dict[str, tuple[str, ...]] = {
     "military": (
         "军演", "军事演习", "演习", "部署", "增兵", "航母", "战机", "舰队", "军方",
         "国防", "导弹试射", "试射", "防空", "军售", "军费", "陆军", "海军", "空军",
+        "导弹", "无人机", "核武器", "不扩散", "核计划", "战备",
         "military exercise", "drill", "troops", "deployment", "aircraft carrier",
         "navy", "air force", "defense ministry", "weapons", "arms sale", "missile test",
         "defense chiefs", "security dialogue", "drone", "uav", "alliance",
+        "npt", "nonproliferation", "nuclear program", "nuclear weapons",
     ),
     "disaster": (
         "地震", "洪水", "台风", "山火", "森林火", "林火", "海啸", "干旱", "暴雨", "泥石流", "坍塌",
