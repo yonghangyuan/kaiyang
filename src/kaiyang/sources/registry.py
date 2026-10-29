@@ -39,6 +39,7 @@ def _auto_register():
     from .xhs_source import XHSSource
     from .websearch_source import WebSearchSource
     from .baidu_source import BaiduNewsSource
+    from .live_text_source import LiveTextSource
     register_source("rss", RSSSource)
     register_source("websearch", WebSearchSource)
     register_source("html", HTMLListSource)
@@ -48,6 +49,7 @@ def _auto_register():
     register_source("weibo", WeiboSource)
     register_source("zhihu", ZhihuSource)
     register_source("xhs", XHSSource)
+    register_source("live_text", LiveTextSource)  # 实时快讯/文字直播（2026-10-29）
 
 
 _auto_register()

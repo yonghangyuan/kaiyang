@@ -121,9 +121,10 @@ def build(hours: int, top: int) -> tuple[str, dict]:
     total_sources = _one(cur, "select count(*) from sources") or 0
 
     new_items = cur.execute(
-        """select i.id, i.title, i.url, i.published_at, i.fetched_at, i.country_code,
+        """select i.id, i.title, i.content, i.url, i.published_at, i.fetched_at, i.country_code,
                   i.raw_data,
-                  coalesce(s.name,'?') as source_name, coalesce(s.credibility_tier,4) as tier
+                  coalesce(s.name,'?') as source_name, coalesce(s.credibility_tier,4) as tier,
+                  coalesce(s.type,'') as source_type
            from intel_items i left join sources s on s.id = i.source_id
            where i.fetched_at >= ? order by i.published_at desc""", (since_s,)
     ).fetchall()
@@ -178,6 +179,14 @@ def build(hours: int, top: int) -> tuple[str, dict]:
     active_today = len(active_sources)
     total_today = len(new_items)
 
+    # ⚡ 实时快讯（live_text 源）: 单独成区，不混进 §三；近 3 小时展示
+    _flash_since = now_utc - timedelta(hours=3)
+    live_items = [r for r in new_items
+                  if (r["source_type"] or "") == "live_text"
+                  and (_parse_utc(r["published_at"]) or _flash_since) >= _flash_since]
+    live_items.sort(key=lambda r: r["published_at"] or "", reverse=True)
+    flash_24h = sum(1 for r in new_items if (r["source_type"] or "") == "live_text")
+
     # §三 降噪: 情报类优先。LLM topic 优先，无标签走规则分类器。
     # 排序: 入专题池(1) > 条目重要度(raw_data.importance) > tier > 新鲜度
     # ——纯 tier+时间序会被"中新网滚动"的民生软新闻霸榜。
@@ -198,7 +207,8 @@ def build(hours: int, top: int) -> tuple[str, dict]:
         importance = int(raw.get("importance") or 0)
         return (-in_pool, -importance, r["tier"] or 4, -_ts(r))
 
-    tagged = [(r, *_item_topic(r)) for r in new_items]
+    tagged = [(r, *_item_topic(r)) for r in new_items
+              if (r["source_type"] or "") != "live_text"]  # 快讯单独成区，不混进 §三
     intel_items = [(r, topic) for r, topic, kind in tagged if _is_intel_topic(topic, kind)]
     other_items = [(r, topic) for r, topic, kind in tagged if not _is_intel_topic(topic, kind)]
     intel_items.sort(key=_rank_key)
@@ -259,6 +269,16 @@ def build(hours: int, top: int) -> tuple[str, dict]:
             add(f"- {w}")
         add("")
 
+    # ⚡ 实时快讯：门户感来源——先把"刚刚发生"摆在最前
+    if live_items:
+        add(f"## ⚡ 实时快讯（近 3 小时 {len(live_items)} 条）")
+        add("")
+        for r in live_items[:8]:
+            content = (r["content"] or r["title"] or "").replace("\n", " ")[:150]
+            imp = " 🔴" if (_raw(r) or {}).get("important") else ""
+            add(f"- `{_fmt_cst(r['published_at'], '%H:%M')}`{imp} {content} · {r['source_name']}")
+        add("")
+
     add("## 一、概览")
     add("")
     add(f"- 新增情报 **{total_today}** 条，来自 **{active_today}** 个源")
@@ -277,6 +297,7 @@ def build(hours: int, top: int) -> tuple[str, dict]:
         add("- 事件类型: " + " / ".join(
             f"{TYPE_LABEL.get(k, k)} {v}" for k, v in type_counts.most_common()))
     add(f"- 追踪专题 **{len(watch_issues)}** 个，窗口内新增发现 **{len(new_findings)}** 条，待审批 **{pending}** 条")
+    add(f"- 实时快讯 **{flash_24h}** 条 / 24h（近 3h {len(live_items)} 条，见 ⚡）" if flash_24h else "")
     add("")
 
     add(f"## 二、要闻事件 Top {min(top, len(intel_events))}（冲突/军事/灾害/政治/经济）")
@@ -363,6 +384,7 @@ def build(hours: int, top: int) -> tuple[str, dict]:
     add(f"- 今日累计入库 {items_today} 条（本窗口 {total_today} 条）")
     add(f"- AI 标签覆盖 {ai_classified_total}/{total_items} 条（本窗口 {ai_tagged}/{total_today}）")
     add(f"- 待审批 {pending} 条 · 事件总计 {events_total} 个 · 调查报告 {report_count} 份")
+    add(f"- 实时快讯 {flash_24h} 条 / 24h（live_text 源）")
     add(f"- 库: {db_mb:.1f} MB · WAL: {wal_mb:.1f} MB")
     add(f"- LLM: {llm_text}")
     add("")
@@ -376,6 +398,7 @@ def build(hours: int, top: int) -> tuple[str, dict]:
         "new_items": total_today,
         "intel_items": len(intel_items),
         "ai_tagged": ai_tagged,
+        "flash_24h": flash_24h,
         "new_events": len(new_events),
         "sources": active_today,
         "watch_issues": len(watch_issues),

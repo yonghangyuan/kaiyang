@@ -26,7 +26,7 @@ from .content_scraper import scrape_article
 
 # ── 周期抓取通道 (P0 修复: 原实现漏掉 websearch/zhihu/weibo/xhs) ────────
 
-FAST_TYPES = ["gdelt", "usgs", "baidu"]                    # 快通道: 实时 API，60s
+FAST_TYPES = ["gdelt", "usgs", "baidu", "live_text"]   # 快通道: 实时 API/快讯，60s
 SLOW_TYPES = ["rss", "html"]                               # 慢通道: RSS + HTML列表页，90s
 SOCIAL_TYPES = ["websearch", "zhihu", "weibo", "xhs"]      # 社交/搜索通道，300s
 SOCIAL_INTERVAL_SEC = 300

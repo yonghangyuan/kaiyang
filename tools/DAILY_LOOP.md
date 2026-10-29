@@ -87,6 +87,15 @@ DSH 里直接说：
     驳回留档，`reviewed_note` 记录保留项；8 条保留建议按主题互不重复。
     新增 `tools/wal_checkpoint.py`（TRUNCATE 检查点，实测 **38.8MB → 0MB**），
     随 07:00 简报任务末尾执行（长读事务挡着就下次再收，不影响简报）。
+11. ✅ **新增（2026-10-29）实时快讯源 + 直播门户**：
+    - `live_text` 源类型（`sources/live_text_source.py`）：金十快讯 + 东方财富快讯两个无签名 API，
+      走 60s 快通道；时区走同一条归一管道（feed_tz=8）。首批入库 65 条/24h。
+    - 简报新增 **⚡ 实时快讯** 区（近 3h，重要标 🔴），§三 自动排除快讯避免重复。
+    - **实时门户 `/live`**（服务端渲染，无需前端构建）：3 路 B 站直播转播房（iframe）+
+      右栏快讯流（30s 自动刷新 `/api/live/flash`）+ 今日入库/事件/待审批概况；
+      `/brief/latest` 提供简报 Markdown 原文。
+    - 扩展点：新增快讯源只需在 Source.config 里换 `adapter`（jin10/eastmoney），
+      或按同一接口加 HTML/文字直播适配器；直播房间号写在 `/live` 路由的 `rooms` 列表。
 
 ## 四、不建议现在做
 

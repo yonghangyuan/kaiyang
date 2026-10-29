@@ -63,6 +63,14 @@ async def _seed_default_sources():
         {"name": "TechCrunch AI", "type": "rss", "url": "https://techcrunch.com/category/artificial-intelligence/feed/", "credibility_tier": 2},
         {"name": "VentureBeat AI", "type": "rss", "url": "https://venturebeat.com/category/ai/feed/", "credibility_tier": 2},
         {"name": "The Verge AI", "type": "rss", "url": "https://www.theverge.com/rss/ai-artificial-intelligence/index.xml", "credibility_tier": 2},
+        # ═══ 实时快讯（2026-10-29 实时门户）: live_text 源，走 60s 快通道 ═══
+        # feed_tz_offset_hours=8: 快讯时间是 CST 墙上时间，入库由 time_norm 归一
+        {"name": "金十快讯", "type": "live_text", "url": "jin10://flash",
+         "credibility_tier": 2,
+         "config": {"adapter": "jin10", "channel": -8200, "feed_tz_offset_hours": 8}},
+        {"name": "东方财富快讯", "type": "live_text", "url": "eastmoney://kuaixun",
+         "credibility_tier": 2,
+         "config": {"adapter": "eastmoney", "list_id": 102, "feed_tz_offset_hours": 8}},
     ]
 
     # 2026-08-25 大清扫移除名单（不在 defaults 里 + 存在于库 → 删除或暂停）。
@@ -447,6 +455,7 @@ from .api.narrative import router as narrative_router
 from .api.commands import router as commands_router
 from .api.watch import router as watch_router
 from .api.investigate import router as investigate_router
+from .api.live import router as live_router
 from .mcp.handler import router as mcp_router
 
 app.include_router(sources_router)
@@ -466,6 +475,7 @@ app.include_router(narrative_router)
 app.include_router(commands_router)
 app.include_router(watch_router)
 app.include_router(investigate_router)
+app.include_router(live_router)
 app.include_router(mcp_router)
 
 
@@ -568,6 +578,140 @@ async def health():
         status["tianshu"] = {"status": "unreachable"}
 
     return JSONResponse(status)
+
+
+# ── 实时门户（2026-10-29）─────────────────────────────────────
+
+_LIVE_PORTAL_TPL = """<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>开阳 · 实时门户</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,"Segoe UI","Microsoft YaHei",sans-serif;background:#0a0e14;color:#c9d1d9;min-height:100vh}
+a{color:#38bdf8;text-decoration:none}
+header{padding:10px 16px;border-bottom:1px solid #1b2530;display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+h1{font-size:16px;color:#e2c860;letter-spacing:1px}
+.stats{display:flex;gap:14px;font-size:11px;color:#64748b;flex:1;flex-wrap:wrap}
+.stats b{color:#34d399;font-weight:600}
+nav a{font-size:11px;margin-left:12px;color:#94a3b8}
+main{display:grid;grid-template-columns:1.35fr 1fr;gap:10px;padding:10px}
+@media(max-width:960px){main{grid-template-columns:1fr}}
+.tv-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.tv{border:1px solid #1b2530;border-radius:6px;overflow:hidden;background:#000}
+.tv iframe{width:100%;aspect-ratio:16/9;display:block;border:none}
+.tv-label{display:flex;align-items:center;gap:6px;padding:4px 8px;font-size:11px;color:#94a3b8;background:#0d131b}
+.dot{width:6px;height:6px;border-radius:50%;background:#ef4444;display:inline-block;animation:pulse 1.6s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.25}}
+.panel{border:1px solid #1b2530;border-radius:6px;background:#0d131b;display:flex;flex-direction:column;max-height:calc(100vh - 110px)}
+.panel-h{padding:8px 10px;border-bottom:1px solid #1b2530;font-size:12px;color:#e2c860;display:flex;justify-content:space-between}
+.panel-h span{color:#64748b;font-size:10px}
+#flash{overflow-y:auto;padding:6px 10px}
+.item{padding:7px 0;border-bottom:1px dashed #1b2530;font-size:12px;line-height:1.5}
+.item.imp{background:rgba(239,68,68,.05)}
+.meta{display:flex;gap:8px;font-size:10px;color:#64748b;margin-bottom:2px}
+.meta .t{color:#38bdf8}
+.c{color:#c9d1d9}
+.item a{font-size:10px;color:#475569}
+.empty{padding:20px;text-align:center;color:#475569;font-size:12px}
+#upd{color:#34d399}
+</style>
+</head>
+<body>
+<header>
+  <h1>开阳 · 实时门户</h1>
+  <div class="stats">
+    <span>今日入库 <b>$ITEMS_TODAY</b></span>
+    <span>事件 <b>$EVENTS</b></span>
+    <span>待审批 <b>$PENDING</b></span>
+    <span>快讯 24h <b>$FLASH24</b></span>
+    <span>刷新 <b id="upd">—</b></span>
+  </div>
+  <nav>
+    <a href="/">态势地图</a>
+    <a href="/brief/latest" target="_blank">完整简报</a>
+    <a href="/docs" target="_blank">API</a>
+  </nav>
+</header>
+<main>
+  <section>
+    <div class="tv-grid">$TV_HTML</div>
+  </section>
+  <section class="panel">
+    <div class="panel-h">⚡ 实时快讯（金十 / 东方财富，30s 自动刷新）<span>近 24h</span></div>
+    <div id="flash"><div class="empty">加载中…</div></div>
+  </section>
+</main>
+<script>
+var box = document.getElementById('flash');
+function esc(s){ return String(s||'').replace(/[<>&]/g, function(c){ return {'<':'&lt;','>':'&gt;','&':'&amp;'}[c]; }); }
+function load(){
+  fetch('/api/live/flash?hours=24&limit=60').then(function(r){ return r.json(); }).then(function(d){
+    document.getElementById('upd').textContent = d.updated || '—';
+    if (!d.items || !d.items.length){ box.innerHTML = '<div class="empty">近 24h 暂无快讯（等待采集）</div>'; return; }
+    box.innerHTML = d.items.map(function(it){
+      var cls = it.important ? 'item imp' : 'item';
+      return '<div class="' + cls + '"><div class="meta"><span class="t">' + esc(it.time_cst) +
+        '</span><span>' + esc(it.source) + '</span></div><div class="c">' + esc(it.content) +
+        '</div><a href="' + esc(it.url) + '" target="_blank" rel="noopener">原文</a></div>';
+    }).join('');
+  }).catch(function(e){ box.innerHTML = '<div class="empty">快讯加载失败: ' + esc(e) + '</div>'; });
+}
+load(); setInterval(load, 30000);
+</script>
+</body>
+</html>"""
+
+
+@app.get("/brief/latest")
+async def latest_brief():
+    """最新一期简报（Markdown 原文，供门户/外部消费）。"""
+    import os as _os
+    path = _os.path.abspath(_os.path.join(
+        _os.path.dirname(__file__), "..", "..", "reports", "briefs", "latest.md"))
+    if not _os.path.exists(path):
+        return HTMLResponse("暂无简报", status_code=404)
+    return _FileResponse(path, media_type="text/markdown; charset=utf-8")
+
+
+@app.get("/live")
+async def live_portal():
+    """实时门户：多路直播 + 实时快讯 + 今日概况（服务端渲染，无需前端构建）。"""
+    from string import Template
+
+    from sqlalchemy import text as _text
+
+    stats = {"items_today": 0, "pending": 0, "events": 0, "flash": 0}
+    try:
+        async with async_session() as db:
+            stats["items_today"] = (await db.execute(_text(
+                "select count(*) from intel_items where fetched_at >= date('now')"))).scalar() or 0
+            stats["pending"] = (await db.execute(_text(
+                "select count(*) from issue_findings where status='pending'"))).scalar() or 0
+            stats["events"] = (await db.execute(_text("select count(*) from events"))).scalar() or 0
+            stats["flash"] = (await db.execute(_text(
+                "select count(*) from intel_items i join sources s on s.id=i.source_id "
+                "where s.type='live_text' and i.fetched_at >= datetime('now','-24 hours')"))).scalar() or 0
+    except Exception:
+        pass
+
+    # 直播画面：B 站转播房（LiveTVPanel 同款房间，国内必达；房间号失效时换号）
+    rooms = [("央视新闻", "8178490"), ("总台新闻·二路", "21623527"),
+             ("总台新闻·三路", "22142427")]
+    tv_html = "".join(
+        '<div class="tv"><iframe src="https://live.bilibili.com/h5/{room}" '
+        'allow="autoplay; fullscreen; encrypted-media" loading="lazy"></iframe>'
+        '<div class="tv-label"><span class="dot"></span>{name}</div></div>'.format(
+            room=room, name=name)
+        for name, room in rooms
+    )
+    html = Template(_LIVE_PORTAL_TPL).safe_substitute(
+        ITEMS_TODAY=stats["items_today"], PENDING=stats["pending"],
+        EVENTS=stats["events"], FLASH24=stats["flash"], TV_HTML=tv_html,
+    )
+    return HTMLResponse(html)
 
 
 # ── CLI 入口 ───────────────────────────────────────────────────
