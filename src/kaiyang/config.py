@@ -48,6 +48,16 @@ class Settings(BaseSettings):
     password: str = ""  # 留空 = 无认证
     rss_fetch_interval: int = 90   # 90 秒（新闻源）
 
+    # ── LLM（2026-10-29: 直连 DeepSeek，复用 DSH 凭据；天枢云服务已下线）──
+    # key 解析顺序: KAIYANG_DEEPSEEK_API_KEY → DEEPSEEK_API_KEY →
+    #   ~/.dsh/.credentials.yaml → ~/.tianshu/config.yaml（实现见 pipeline/llm.py）
+    deepseek_api_key: str = ""
+    llm_base_url: str = "https://api.deepseek.com"
+    llm_model_deep: str = "deepseek-v4-pro"   # 分析/报告（推理档）
+    llm_model_fast: str = "deepseek-flash"    # 分类/轻任务（便宜档）
+    dsh_credentials_path: str = str(Path.home() / ".dsh" / ".credentials.yaml")
+    tianshu_user_config: str = str(Path.home() / ".tianshu" / "config.yaml")
+
     @property
     def using_sqlite(self) -> bool:
         """是否为 SQLite 后端。"""

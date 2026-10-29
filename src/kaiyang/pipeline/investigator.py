@@ -244,30 +244,13 @@ async def distill_bucket(subject: str, bucket: list[dict], tiers_ok: bool = True
     prompt = BUCKET_PROMPT.format(subject=subject, span=span, n=len(bucket), digest=digest)
 
     content = None
-    try:
-        from .analyst import get_analyst
-        content = await get_analyst().run(prompt, session_id=session_id)
-        if content:
-            return content.strip()
-    except Exception:
-        content = None
-
-    if content is None and settings.tianshu_base_url:
-        import httpx
-        try:
-            headers = {}
-            if settings.tianshu_token:
-                headers["Authorization"] = f"Bearer {settings.tianshu_token}"
-            async with httpx.AsyncClient(timeout=90) as client:
-                resp = await client.post(
-                    f"{settings.tianshu_base_url}/run",
-                    json={"input": prompt, "session_id": session_id}, headers=headers)
-                if resp.status_code == 200:
-                    content = resp.json().get("content", "") or None
-                    if content:
-                        return content.strip()
-        except Exception:
-            pass
+    from .llm import generate
+    content, _engine = await generate(
+        prompt, session_id=session_id, prefer="deep",
+        max_tokens=1500, temperature=0.2,
+    )
+    if content:
+        return content.strip()
 
     # 规则桶兜底: 零 token, 保时间线不断档
     top_titles = "; ".join(e["title"][:40] for e in bucket[:5])
@@ -412,38 +395,15 @@ async def investigate(pack: dict, session_id: str = "kaiyang-investigate") -> di
     engine = ""
     content = None
 
-    # 1) 嵌入式分析员（情报特化 soul + 报告纪律 prompt）
-    try:
-        from .analyst import get_analyst
-        analyst = get_analyst()
-        content = await analyst.run(prompt, session_id=session_id)
-        if content:
-            engine = "embedded-tianshu"
-    except Exception:
-        content = None
-
-    # 2) HTTP 天枢（服务器实例）
-    if content is None and settings.tianshu_base_url:
-        import httpx
-        try:
-            headers = {}
-            if settings.tianshu_token:
-                headers["Authorization"] = f"Bearer {settings.tianshu_token}"
-            async with httpx.AsyncClient(timeout=120) as client:
-                resp = await client.post(
-                    f"{settings.tianshu_base_url}/run",
-                    json={"input": prompt, "session_id": session_id},
-                    headers=headers,
-                )
-                if resp.status_code == 200:
-                    content = resp.json().get("content", "") or None
-                    if content:
-                        engine = "http-tianshu"
-        except Exception:
-            content = None
+    # 2026-10-29: 统一降级链（DeepSeek 直连·DSH key → 嵌入式天枢 → HTTP 天枢）
+    from .llm import generate
+    content, engine = await generate(
+        prompt, session_id=session_id, prefer="deep",
+        max_tokens=8192, temperature=0.3,
+    )
 
     if not content:
-        return {"ok": False, "error": "分析员不可用（嵌入式未就绪且 HTTP 天枢不可达）",
+        return {"ok": False, "error": "LLM 不可用（DeepSeek 直连/嵌入式天枢/HTTP 天枢均失败）",
                 "pack": pack}
 
     report_md = _wrap_report(pack, content, engine)

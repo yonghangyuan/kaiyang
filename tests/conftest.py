@@ -22,6 +22,11 @@ import tempfile
 _fd, _path = tempfile.mkstemp(suffix=".db", prefix="kaiyang_test_shared_")
 os.environ["KAIYANG_DATABASE_URL"] = f"sqlite+aiosqlite:///{_path}"
 
+# 测试期禁用真实 LLM 网络调用（把 run 全变成毫秒级失败；需要测 key 解析的
+# test_llm.py 自己会删掉这个 env）。2026-10-29: 直连 DeepSeek 后，若某个测试
+# 忘了 mock，会真的打 API 并拖慢/挂起整套测试。
+os.environ.setdefault("KAIYANG_LLM_OFF", "1")
+
 
 def _cleanup_test_db() -> None:
     try:

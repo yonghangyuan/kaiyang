@@ -10,6 +10,10 @@
 | 开阳服务 | `F:\kaiyang` → 127.0.0.1:8721 | 计划任务 `KaiyangServer`，每天 06:50（错过则唤醒后补跑） | 已监听则跳过；日志 `reports\server.log` / `server.err.log` |
 | 每日简报 | `tools\daily_brief.py` → `reports\briefs\YYYY-MM-DD.md` + `latest.md` | 计划任务 `KaiyangDailyBrief`，每天 07:00 | 纯 SQLite 读，不依赖 LLM；日志 `reports\brief.log` |
 | DSH 接入 | `C:\Users\16411\.dsh\profiles\web\cordis.patch.yml` → `mcp-kaiyang` | DSH 启动时连接（HMR 会热加载） | 工具名 `mcp__kaiyang__*`；服务没起时 DSH 照常启动，只是少这 17 个工具 |
+| LLM | `pipeline/llm.py` | 分析/报告时同步调用 | DeepSeek 直连（**复用 DSH 的 DeepSeek key**）→ 嵌入式天枢 → HTTP 天枢；轻任务关思考 |
+
+> 过夜关机自愈：启动目录 `%APPDATA%\...\Startup\KaiyangBoot.cmd`（登录 → 起服务 → 等 60s 首轮抓取 → 补出当日简报）。
+> 覆盖"半夜关机、07:00 定时任务错过"的场景（2026-10-29 首次遇到）。
 
 ## 二、日常操作
 
@@ -46,11 +50,16 @@ DSH 里直接说：
    体育/科技进「其他动态」。LLM 恢复后规则结果可当 `classify_guard` 式基线夹板。
    - 命令：`python tools/reclassify_events.py [--days N] [--dry-run]`（建议停机跑）
    - 测试：`tests/test_event_classifier.py`（7 条）+ 回归套件 250 passed
-3. **专题批处理 8 周没跑**（`issues.watch_last_run` 停在 09-03），新情报进池但不产 findings。
-   行动：服务常驻后观察 6h 是否自动跑一轮；不动就手动调 `issue_analyzer`。
+3. ✅ **已修（2026-10-29）LLM 链路**：新增 `pipeline/llm.py` 统一入口——直连 DeepSeek
+   （**复用 DSH 的 key**：`~/.dsh/.credentials.yaml` → 兼容 `KAIYANG_DEEPSEEK_API_KEY` / `DEEPSEEK_API_KEY`
+   → `~/.tianshu/config.yaml` 兜底），降级链 = DeepSeek 直连 → 嵌入式天枢分析员 → HTTP 天枢。
+   `issue_analyzer` / `investigator` / `ai_classifier` 全部改走该入口；
+   实测美伊专题一轮产出 **7 条 findings**（note + chain 结构化建议）。
+   DeepSeek 两个模型都是推理模型：轻任务 `thinking=False` 关思考；正文被思考截断时自动翻倍预算重试。
+   专题水位线已推进（`watch_last_run` 不再是 09-03）。
 4. ✅ **已修（2026-10-28）看门狗**：计划任务 `KaiyangWatchdog` 每小时跑一次启动脚本（幂等，已监听则退出）。
-5. **`KAIYANG_TIANSHU_BASE_URL` 仍指向已下线云服务器** 175.27.157.139:8720 → analyst 的嵌入天枢路径会走 HTTP 兜底。
-   行动：改指本地，或把 LLM 分析改走 DeepSeek API（`.env` 加 key）。
+5. ✅ **已修（2026-10-29）**：LLM 不再依赖天枢云服务（`pipeline/llm.py` 直连 DeepSeek，
+   复用 DSH 凭据）。`KAIYANG_TIANSHU_BASE_URL` 现在只是第三级兜底，建议在 `.env` 里删掉或改指本地。
 6. 简报暂无 LLM 摘要 → 先用结构化版跑 3 天，有感觉了再加。
 
 ## 四、不建议现在做

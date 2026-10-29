@@ -69,32 +69,13 @@ async def _tianshu_analyze(issue: Issue, items: list[dict]) -> list[dict] | None
 - 宁缺毋滥: 没有值得记的就输出 []
 - 只输出 JSON 数组本身"""
 
-    content = None
-
-    # 1) 进程内分析员（嵌入式天枢, 独立情报 soul）
-    try:
-        from .analyst import get_analyst
-        analyst = get_analyst()
-        content = await analyst.run(prompt, session_id=f"kaiyang-watch-{issue.id}")
-    except Exception:
-        content = None
-
-    # 2) HTTP 天枢（服务器实例）
-    if content is None and settings.tianshu_base_url:
-        try:
-            headers = {}
-            if settings.tianshu_token:
-                headers["Authorization"] = f"Bearer {settings.tianshu_token}"
-            async with httpx.AsyncClient(timeout=60) as client:
-                resp = await client.post(
-                    f"{settings.tianshu_base_url}/run",
-                    json={"input": prompt, "session_id": f"kaiyang-watch-{issue.id}"},
-                    headers=headers,
-                )
-                if resp.status_code == 200:
-                    content = resp.json().get("content", "") or None
-        except Exception:
-            content = None
+    # 2026-10-29: 统一走 llm.generate 降级链
+    #   DeepSeek 直连（复用 DSH key）→ 嵌入式天枢分析员 → HTTP 天枢
+    from .llm import generate
+    content, _engine = await generate(
+        prompt, session_id=f"kaiyang-watch-{issue.id}", prefer="deep",
+        max_tokens=6144, temperature=0.2,
+    )
 
     if not content:
         return None

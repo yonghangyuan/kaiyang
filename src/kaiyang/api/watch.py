@@ -227,15 +227,26 @@ async def keyword_spikes():
 
 @router.get("/analyst/status")
 async def analyst_status():
-    """嵌入式分析员状态（诊断用）。"""
+    """LLM 链路状态（诊断用）: 主引擎 + 嵌入式分析员 + 兜底。"""
     from ..pipeline.analyst import get_analyst
+    from ..pipeline.llm import status as llm_status
     a = get_analyst()
+    llm = llm_status()
+    if llm["configured"]:
+        engine = "deepseek"          # 主引擎: DeepSeek 直连（复用 DSH key）
+    elif a.ready:
+        engine = "embedded"
+    elif settings.tianshu_base_url:
+        engine = "http"
+    else:
+        engine = "rule"
     return {
+        "llm": llm,                  # configured / key_source / model（key 只给掩码）
         "embedded_ready": a.ready,
         "error": a.error,
         "mcp_tools": getattr(a, "mcp_tools_connected", False),
         "http_tianshu": bool(settings.tianshu_base_url),
-        "engine": "embedded" if a.ready else ("http" if settings.tianshu_base_url else "rule"),
+        "engine": engine,
     }
 
 

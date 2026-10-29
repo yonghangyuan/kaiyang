@@ -32,34 +32,30 @@ Article: {text[:1000]}
 JSON:"""
 
     try:
-        async with httpx.AsyncClient(timeout=30) as client:
-            headers = {"Authorization": f"Bearer {settings.tianshu_token}"} if settings.tianshu_token else {}
-            resp = await client.post(
-                f"{settings.tianshu_base_url}/run",
-                json={"input": prompt, "session_id": "kaiyang-classifier"},
-                headers=headers,
-            )
-            if resp.status_code == 200:
-                content = resp.json().get("content", "")
-                # 提取 JSON
-                for line in content.split("\n"):
-                    line = line.strip()
-                    if line.startswith("{") and line.endswith("}"):
-                        try:
-                            result = _json.loads(line)
-                            threat = result.get("threat", "info")
-                            # 安全带: LLM 威胁等级最多比关键词基线升 2 级（防幻觉升级）
-                            from .classify_guard import cap_llm_level
-                            threat, capped = cap_llm_level(threat, text)
-                            return {
-                                "topic": result.get("topic", "other"),
-                                "threat": threat,
-                                "threat_capped": capped,  # 审计: 被夹过的标记
-                                "sentiment": float(result.get("sentiment", 0)),
-                                "summary": result.get("summary", "")[:200],
-                            }
-                        except (_json.JSONDecodeError, ValueError):
-                            continue
+        # 2026-10-29: 直连 DeepSeek（复用 DSH 凭据）——天枢云服务已下线
+        from .llm import chat
+        content = await chat(prompt, prefer="fast", max_tokens=1024,
+                             temperature=0.0, timeout=60, thinking=False) or ""
+        if content:
+            # 提取 JSON
+            for line in content.split("\n"):
+                line = line.strip()
+                if line.startswith("{") and line.endswith("}"):
+                    try:
+                        result = _json.loads(line)
+                        threat = result.get("threat", "info")
+                        # 安全带: LLM 威胁等级最多比关键词基线升 2 级（防幻觉升级）
+                        from .classify_guard import cap_llm_level
+                        threat, capped = cap_llm_level(threat, text)
+                        return {
+                            "topic": result.get("topic", "other"),
+                            "threat": threat,
+                            "threat_capped": capped,  # 审计: 被夹过的标记
+                            "sentiment": float(result.get("sentiment", 0)),
+                            "summary": result.get("summary", "")[:200],
+                        }
+                    except (_json.JSONDecodeError, ValueError):
+                        continue
     except Exception:
         pass
 

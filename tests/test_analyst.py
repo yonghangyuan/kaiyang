@@ -80,15 +80,15 @@ async def test_analyzer_degradation_chain_order(setup_db):
 
     items = [{"id": "a", "title": "伊朗核谈判", "published": "2026-08-26T10:00", "source": "s"}]
 
-    # 1) 嵌入式成功 → 不走 HTTP
-    with patch("kaiyang.pipeline.issue_analyzer.get_analyst" if False else
-               "kaiyang.pipeline.analyst.get_analyst") as ga:
+    # 主引擎 DeepSeek 直连失败（mock）→ 嵌入式分析员接住
+    with patch("kaiyang.pipeline.llm.chat", new=AsyncMock(return_value=None)), \
+         patch("kaiyang.pipeline.analyst.get_analyst") as ga:
         mock_analyst = AsyncMock()
         mock_analyst.run = AsyncMock(return_value='[{"type":"note","content":"嵌入式产出"}]')
         ga.return_value = mock_analyst
-        # issue_analyzer 里是 from .analyst import get_analyst (局部导入), patch 源模块
         result = await issue_analyzer._tianshu_analyze(iss, items)
         assert result and result[0]["content"] == "嵌入式产出"
+        mock_analyst.run.assert_awaited()
 
 
 @pytest.mark.asyncio
@@ -104,20 +104,23 @@ async def test_analyzer_falls_back_to_http(setup_db):
 
     items = [{"id": "a", "title": "德黑兰消息", "published": "2026-08-26T10:00", "source": "s"}]
 
-    # 嵌入式返回 None (失败)
-    with patch("kaiyang.pipeline.analyst.get_analyst") as ga:
-        mock_analyst = AsyncMock()
-        mock_analyst.run = AsyncMock(return_value=None)
-        ga.return_value = mock_analyst
-        # HTTP 层 mock 成功
-        class FakeResp:
-            status_code = 200
-            def json(self):
-                return {"content": '[{"type":"note","content":"HTTP产出"}]'}
-        with patch.object(issue_analyzer.httpx.AsyncClient, "post",
-                          new=AsyncMock(return_value=FakeResp())):
-            result = await issue_analyzer._tianshu_analyze(iss, items)
-            assert result and result[0]["content"] == "HTTP产出"
+    # 主引擎 + 嵌入式都失败 → HTTP 天枢兜底接住
+    fake_client = AsyncMock()
+    fake_client.__aenter__.return_value = fake_client
+    fake_client.__aexit__.return_value = False
+
+    class FakeResp:
+        status_code = 200
+        def json(self):
+            return {"content": '[{"type":"note","content":"HTTP产出"}]'}
+
+    fake_client.post = AsyncMock(return_value=FakeResp())
+    with patch("kaiyang.pipeline.llm.chat", new=AsyncMock(return_value=None)), \
+         patch("kaiyang.pipeline.analyst.get_analyst") as ga, \
+         patch("kaiyang.pipeline.llm.httpx.AsyncClient", return_value=fake_client):
+        ga.return_value.run = AsyncMock(return_value=None)
+        result = await issue_analyzer._tianshu_analyze(iss, items)
+        assert result and result[0]["content"] == "HTTP产出"
 
 
 @pytest.mark.asyncio
@@ -147,4 +150,5 @@ async def test_analyst_status_endpoint(setup_db):
         d = r.json()
         assert r.status_code == 200
         assert "engine" in d
-        assert d["engine"] in ("embedded", "http", "rule")
+        assert d["engine"] in ("deepseek", "embedded", "http", "rule")
+        assert "llm" in d  # 直连引擎状态（key 只给掩码）
