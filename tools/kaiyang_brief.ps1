@@ -17,3 +17,6 @@ New-Item -ItemType Directory -Force -Path "$root\reports" | Out-Null
 # 2) 出简报
 & $py "$root\tools\daily_brief.py" --hours 24 2>&1 | Out-File -Append -Encoding utf8 $log
 if ($LASTEXITCODE -ne 0) { "brief failed: exit $LASTEXITCODE" | Out-File -Append -Encoding utf8 $log }
+
+# 3) WAL 检查点（尽力而为：长读事务挡着就下次再收，不影响简报）
+& $py "$root\tools\wal_checkpoint.py" 2>&1 | Out-File -Append -Encoding utf8 $log
