@@ -29,3 +29,6 @@ task_backups/
 
 # UI 截图（开发验证产物）
 tools/*.png
+
+# 本地小模型权重（bge-small-zh 等，不进仓库）
+models/
