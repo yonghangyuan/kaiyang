@@ -12,7 +12,7 @@ from httpx import ASGITransport, AsyncClient
 
 from kaiyang.db import Base, async_session, engine
 from kaiyang.main import app
-from kaiyang.models import IntelItem, Source, _new_id
+from kaiyang.models import IntelItem, Issue, Source, _new_id
 from kaiyang.sources.live_text_source import LiveTextSource, _clean, _parse_time
 
 
@@ -115,3 +115,37 @@ async def test_live_flash_api(setup_db):
         assert it["content"] == "快讯正文"
         assert it["important"] is True
         assert it["time_cst"]  # CST 展示字符串存在
+
+
+@pytest.mark.asyncio
+async def test_live_summary_api(setup_db):
+    """门户概况：今日统计 + 要闻事件 + 专题链节点 + 待审批。"""
+    from kaiyang.models import Event, IssueEvent, IssueFinding
+
+    async with async_session() as db:
+        iss = Issue(id=_new_id("IS"), title="测试专题", status="tracking", watch=1)
+        db.add(iss)
+        await db.flush()
+        ev = Event(id=_new_id("EV"), title="测试事件", event_type="conflict",
+                   severity=5, importance=50, time_start=datetime(2026, 10, 29, 12, 0, 0),
+                   created_at=datetime(2026, 10, 29, 12, 0, 0))
+        db.add(ev)
+        await db.flush()
+        db.add(IssueEvent(issue_id=iss.id, event_id=ev.id,
+                          relation="trigger", evidence="测试依据"))
+        db.add(IssueFinding(id=_new_id("FD"), issue_id=iss.id, finding_type="chain",
+                            status="pending", content="测试待批建议",
+                            proposal={"action": "create_event", "title": "x"}))
+        await db.commit()
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        r = await client.get("/api/live/summary")
+        assert r.status_code == 200
+        d = r.json()
+        assert d["stats"]["pending"] == 1
+        assert any(e["title"] == "测试事件" for e in d["events"])
+        chain = next(c for c in d["chains"] if c["issue"] == "测试专题")
+        assert chain["nodes"][0]["relation"] == "trigger"
+        assert d["pending"][0]["content"] == "测试待批建议"
+        assert d["updated"]

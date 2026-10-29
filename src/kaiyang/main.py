@@ -597,7 +597,8 @@ h1{font-size:16px;color:#e2c860;letter-spacing:1px}
 .stats{display:flex;gap:14px;font-size:11px;color:#64748b;flex:1;flex-wrap:wrap}
 .stats b{color:#34d399;font-weight:600}
 nav a{font-size:11px;margin-left:12px;color:#94a3b8}
-main{display:grid;grid-template-columns:1.35fr 1fr;gap:10px;padding:10px}
+main{display:grid;grid-template-columns:1.35fr 1fr 1fr;gap:10px;padding:10px}
+@media(max-width:1400px){main{grid-template-columns:1.35fr 1fr}}
 @media(max-width:960px){main{grid-template-columns:1fr}}
 .tv-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
 .tv{border:1px solid #1b2530;border-radius:6px;overflow:hidden;background:#000}
@@ -617,16 +618,23 @@ main{display:grid;grid-template-columns:1.35fr 1fr;gap:10px;padding:10px}
 .item a{font-size:10px;color:#475569}
 .empty{padding:20px;text-align:center;color:#475569;font-size:12px}
 #upd{color:#34d399}
+.sub-h{padding:8px 10px 4px;font-size:11px;color:#e2c860;border-top:1px solid #1b2530}
+.sub-h:first-child{border-top:none}
+.chain-title{font-size:11px;color:#94a3b8;padding:4px 10px}
+.node{font-size:11px;line-height:1.5;padding:2px 10px 2px 18px;position:relative;color:#c9d1d9}
+.node:before{content:"·";position:absolute;left:10px;color:#475569}
+.rel{display:inline-block;min-width:52px;font-size:9px;color:#38bdf8;border:1px solid #1e3a5f;border-radius:3px;padding:0 4px;margin-right:4px}
+#summary{overflow-y:auto;padding:6px 0}
 </style>
 </head>
 <body>
 <header>
   <h1>开阳 · 实时门户</h1>
   <div class="stats">
-    <span>今日入库 <b>$ITEMS_TODAY</b></span>
-    <span>事件 <b>$EVENTS</b></span>
-    <span>待审批 <b>$PENDING</b></span>
-    <span>快讯 24h <b>$FLASH24</b></span>
+    <span>近24h入库 <b id="st-items">$ITEMS_TODAY</b></span>
+    <span>事件 <b id="st-events">$EVENTS</b></span>
+    <span>待审批 <b id="st-pending">$PENDING</b></span>
+    <span>快讯 24h <b id="st-flash">$FLASH24</b></span>
     <span>刷新 <b id="upd">—</b></span>
   </div>
   <nav>
@@ -642,6 +650,10 @@ main{display:grid;grid-template-columns:1.35fr 1fr;gap:10px;padding:10px}
   <section class="panel">
     <div class="panel-h">⚡ 实时快讯（金十 / 东方财富，30s 自动刷新）<span>近 24h</span></div>
     <div id="flash"><div class="empty">加载中…</div></div>
+  </section>
+  <section class="panel">
+    <div class="panel-h">📌 今日要闻 / 专题链（60s 刷新）<span id="chain-upd"></span></div>
+    <div id="summary"><div class="empty">加载中…</div></div>
   </section>
 </main>
 <script>
@@ -660,6 +672,44 @@ function load(){
   }).catch(function(e){ box.innerHTML = '<div class="empty">快讯加载失败: ' + esc(e) + '</div>'; });
 }
 load(); setInterval(load, 30000);
+
+function renderSummary(d){
+  var s = d.stats || {};
+  var put = function(id, v){ var el = document.getElementById(id); if (el && v != null) el.textContent = v; };
+  put('st-items', s.items_today); put('st-events', s.events);
+  put('st-pending', s.pending); put('st-flash', s.flash_24h);
+  var h = '';
+  h += '<div class="sub-h">今日要闻 · 情报类</div>';
+  var evs = d.events || [];
+  h += evs.length ? evs.map(function(e){
+    return '<div class="item"><div class="meta"><span class="t">' + esc(e.time_cst) + '</span><span>' +
+      esc(e.type) + ' · sev ' + (e.severity || '—') + '</span></div><div class="c">' + esc(e.title) + '</div></div>';
+  }).join('') : '<div class="empty">今日暂无情报类事件</div>';
+  h += '<div class="sub-h">专题事件链 · 最新节点</div>';
+  var chains = d.chains || [];
+  if (!chains.length) { h += '<div class="empty">暂无追踪专题</div>'; }
+  chains.forEach(function(c){
+    h += '<div class="chain-title">' + esc(c.issue) + '</div>';
+    h += (c.nodes || []).length ? c.nodes.map(function(n){
+      return '<div class="node"><span class="rel">' + esc(n.relation) + '</span>' + esc(n.title) +
+        (n.severity ? ' <span style="color:#475569">sev ' + n.severity + '</span>' : '') + '</div>';
+    }).join('') : '<div class="empty">暂无入链事件</div>';
+  });
+  h += '<div class="sub-h">待审批建议（在 DSH 里说「批/驳 id」）</div>';
+  var ps = d.pending || [];
+  h += ps.length ? ps.map(function(p){
+    return '<div class="item"><div class="c">' + esc(p.content) + '</div><div class="meta"><span class="t">' + esc(p.id) + '</span></div></div>';
+  }).join('') : '<div class="empty">无待审批</div>';
+  document.getElementById('summary').innerHTML = h;
+  var cu = document.getElementById('chain-upd');
+  if (cu) cu.textContent = d.updated || '';
+}
+function loadSummary(){
+  fetch('/api/live/summary').then(function(r){ return r.json(); }).then(renderSummary).catch(function(e){
+    document.getElementById('summary').innerHTML = '<div class="empty">概况加载失败: ' + esc(e) + '</div>';
+  });
+}
+loadSummary(); setInterval(loadSummary, 60000);
 </script>
 </body>
 </html>"""
