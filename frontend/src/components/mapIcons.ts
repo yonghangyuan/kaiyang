@@ -4,7 +4,8 @@ import L from 'leaflet'
 
 export type PinKind =
   | 'conflict' | 'military' | 'disaster' | 'political'
-  | 'economic' | 'social' | 'tech' | 'other'
+  | 'diplomacy' | 'economic' | 'energy' | 'shipping'
+  | 'social' | 'tech' | 'other'
 
 // 类型配色（地图图标主体色；严重度用尺寸 + 脉冲环表达）
 export const TYPE_COLORS: Record<PinKind, string> = {
@@ -12,10 +13,28 @@ export const TYPE_COLORS: Record<PinKind, string> = {
   military: '#3b82f6',
   disaster: '#f97316',
   political: '#a855f7',
+  diplomacy: '#ec4899',
   economic: '#22c55e',
-  social: '#06b6d4',
-  tech: '#14b8a6',
-  other: '#94a3b8',
+  energy: '#eab308',
+  shipping: '#0ea5e9',
+  social: '#14b8a6',
+  tech: '#22d3ee',
+  other: '#64748b',
+}
+
+// 中文标签（地图图例 / 分类筛选共用）
+export const TYPE_LABELS: Record<PinKind, string> = {
+  conflict: '冲突',
+  military: '军事',
+  disaster: '灾害',
+  political: '政治',
+  diplomacy: '外交',
+  economic: '经济',
+  energy: '能源',
+  shipping: '航运',
+  social: '社会',
+  tech: '科技',
+  other: '其他',
 }
 
 const GLYPHS: Record<string, string> = {
@@ -25,8 +44,14 @@ const GLYPHS: Record<string, string> = {
   military: '<path d="M12 3l6.8 2.7v5c0 4.3-2.8 7.3-6.8 9-4-1.7-6.8-4.7-6.8-9v-5z"/><path d="M12 8v4.2"/><circle cx="12" cy="15" r="1.1"/>',
   // 灾害：警示三角
   disaster: '<path d="M12 3.6L20.8 19H3.2z"/><path d="M12 9.2v4.1"/><circle cx="12" cy="16.1" r="1.05"/>',
-  // 政治：议会/殿堂（比旗帜在 20px 下更易辨识，不会看成字母 P）
+  // 政治：议会/殿堂
   political: '<path d="M12 3.6l7 3.5H5z"/><path d="M6.6 9.3v5.9M9.7 9.3v5.9M14.3 9.3v5.9M17.4 9.3v5.9"/><path d="M4.8 17.2h14.4"/>',
+  // 外交：地球（国际/多边）
+  diplomacy: '<circle cx="12" cy="12" r="7.4"/><path d="M4.6 12h14.8M12 4.6c2.4 2.2 3.6 4.7 3.6 7.4s-1.2 5.2-3.6 7.4M12 4.6C9.6 6.8 8.4 9.3 8.4 12s1.2 5.2 3.6 7.4"/>',
+  // 能源：闪电
+  energy: '<path d="M13.2 3.2L5.8 13.4h5.2l-1.2 7.4L18.2 10h-5.4z"/>',
+  // 航运：货轮
+  shipping: '<path d="M4.2 15.6l7.8-2.4 7.8 2.4-1.6 4H5.8z"/><path d="M6.8 15.2V8.4L12 5.8l5.2 2.6v6.8"/><path d="M9.6 9.6h4.8"/>',
   // 经济：趋势线
   economic: '<path d="M4 18.4l5.1-5.1 2.9 2.3L19.5 8"/><path d="M14.6 8h4.9v4.9"/>',
   // 社会：人群
@@ -82,10 +107,7 @@ export function nodeIcon(index: number, color: string): L.DivIcon {
 
 export function eventKind(eventType?: string | null): PinKind {
   const t = (eventType || '').toLowerCase()
-  if (t === 'conflict' || t === 'military' || t === 'disaster' || t === 'political' ||
-      t === 'economic' || t === 'social' || t === 'tech') {
-    return t as PinKind
-  }
+  if (t in TYPE_COLORS && t !== 'other') return t as PinKind
   return 'other'
 }
 

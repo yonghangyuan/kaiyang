@@ -29,12 +29,14 @@ OUT_DIR = ROOT / "reports" / "briefs"
 CST = timezone(timedelta(hours=8))
 
 TYPE_LABEL = {
-    "conflict": "冲突", "disaster": "灾害", "political": "政治",
-    "economic": "经济", "military": "军事", "social": "社会",
-    "tech": "科技", "other": "其他", "news": "未分类",
+    "conflict": "冲突", "military": "军事", "disaster": "灾害",
+    "political": "政治", "diplomacy": "外交", "economic": "经济",
+    "energy": "能源", "shipping": "航运",
+    "social": "社会", "tech": "科技", "other": "其他", "news": "未分类",
 }
 # 情报类（与 src/kaiyang/pipeline/event_classifier.INTEL_TYPES 保持一致）
-INTEL_TYPES = ("conflict", "military", "disaster", "political", "economic")
+INTEL_TYPES = ("conflict", "military", "disaster", "political",
+               "diplomacy", "economic", "energy", "shipping")
 
 # ── 主题标签（§三 降噪）────────────────────────────────────────
 # 优先用 ai_classification.topic（LLM 标签）；没有标签的条目用规则分类器兜底。
@@ -48,11 +50,12 @@ except Exception:  # 独立脚本兜底：没装源码也能出简报
 
 # ai_classification.topic 的取值（ai_classifier.TOPICS）→ 是否情报类
 _AI_INTEL_TOPICS = {"conflict", "military", "disaster", "political", "politics",
-                    "diplomacy", "economy"}
+                    "diplomacy", "economy", "energy", "shipping"}
 # ai topic 的展示名（与 TYPE_LABEL 对齐）
 _AI_TOPIC_LABEL = {
     "diplomacy": "外交", "politics": "政治", "economy": "经济",
     "technology": "科技", "health": "卫生", "environment": "环境",
+    "energy": "能源", "shipping": "航运",
 }
 
 
@@ -300,7 +303,7 @@ def build(hours: int, top: int) -> tuple[str, dict]:
     add(f"- 实时快讯 **{flash_24h}** 条 / 24h（近 3h {len(live_items)} 条，见 ⚡）" if flash_24h else "")
     add("")
 
-    add(f"## 二、要闻事件 Top {min(top, len(intel_events))}（冲突/军事/灾害/政治/经济）")
+    add(f"## 二、要闻事件 Top {min(top, len(intel_events))}（冲突/军事/灾害/政治/外交/经济/能源/航运）")
     add("")
     if intel_events:
         add("| # | 事件 | 类型 | 严重度 | 佐证源 | 重要度 | 时间 |")

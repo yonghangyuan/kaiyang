@@ -39,8 +39,10 @@ def main() -> int:
 
     # 2026-10-29: 规则分类器调权后，历史"规则类"事件（含 political 等）也需要重分；
     # 种子事件的 curated 类型（uap_disclosure/archaeology/finance_distortion）不动。
+    # 2026-10-29 晚: 类目从 8 扩到 11（+diplomacy/energy/shipping），旧事件需全量重分。
     _RULE_TYPES = ("news", "other", "conflict", "military", "disaster",
-                   "political", "economic", "social", "tech")
+                   "political", "diplomacy", "economic", "energy", "shipping",
+                   "social", "tech")
     _ph = ",".join("?" * len(_RULE_TYPES))
     sql = f"select id, title, description, event_type, created_at from events where event_type in ({_ph})"
     params: tuple = tuple(_RULE_TYPES)

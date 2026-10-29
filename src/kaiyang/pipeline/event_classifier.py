@@ -15,16 +15,20 @@
 
 类别
 ----
-  conflict  冲突（战争/空袭/袭击/伤亡）
-  military  军事（演习/部署/装备/军售）
-  disaster  灾害/事故（地震/洪水/坠机/坍塌）
-  political 政治外交（选举/制裁/峰会/抗议）
-  economic  经济财经（贸易/关税/财报/能源）
+  conflict  武装冲突（战争/空袭/交火/袭击/政变）
+  military  军事动态（军演/部署/试射/军售/核态势）
+  disaster  灾害事故（地震/洪水/坠机/坍塌）
+  political 内政政治（选举/法案/抗议/制裁）
+  diplomacy 外交（会谈/峰会/访问/联合国/条约）
+  economic  经济财经（贸易/关税/财报/利率/供应链）
+  energy    能源（石油/天然气/LNG/电力/管道/核电站）
+  shipping  航运物流（港口/航线/海峡/货轮/封锁）
   social    社会文体（体育/文化/旅游/教育）
   tech      科技（AI/芯片/消费电子）
   other     兜底
 
-`INTEL_TYPES` = 前五类，情报简报只把这几类当"要闻"。
+`INTEL_TYPES` = 前八类，情报简报只把这几类当"要闻"。
+地图图标按 EVENT_TYPES 分类着色（见 frontend mapIcons.ts）。
 """
 
 from __future__ import annotations
@@ -32,14 +36,21 @@ from __future__ import annotations
 import re
 
 EVENT_TYPES = (
-    "conflict", "military", "disaster", "political", "economic", "social", "tech", "other",
+    "conflict", "military", "disaster", "political", "diplomacy",
+    "economic", "energy", "shipping", "social", "tech", "other",
 )
 
-# 情报相关性高的类别（简报「事件」区用）
-INTEL_TYPES = ("conflict", "military", "disaster", "political", "economic")
+# 情报相关性高的类别（简报「要闻事件」区 + 地图"新闻"图标）
+INTEL_TYPES = (
+    "conflict", "military", "disaster", "political",
+    "diplomacy", "economic", "energy", "shipping",
+)
 
-# 同分时的优先级：越靠前越"硬"
-_PRIORITY = ("conflict", "military", "disaster", "political", "economic", "social", "tech", "other")
+# 同分时的优先级：越靠前越"硬"（航运/能源优先于泛政治，避免海峡新闻被"总统/声明"吃掉）
+_PRIORITY = (
+    "conflict", "military", "disaster", "shipping", "energy",
+    "diplomacy", "political", "economic", "social", "tech", "other",
+)
 
 # 关键词表（中文直接子串匹配；英文按单词边界匹配，避免 "ai" 命中 "said"）
 _KEYWORDS: dict[str, tuple[str, ...]] = {
@@ -70,17 +81,35 @@ _KEYWORDS: dict[str, tuple[str, ...]] = {
         "landslide", "crash", "disaster", "advisory", "storm", "forest fire", "fire",
     ),
     "political": (
-        "选举", "议会", "法案", "政府", "总统", "首相", "外长", "外交", "峰会",
-        "谈判", "制裁", "抗议", "示威", "弹劾", "辞职", "声明", "警告", "决议",
-        "投票", "签证", "大选",
-        "election", "parliament", "sanctions", "diplomatic", "summit", "talks",
-        "protest", "president", "prime minister", "vote", "embassy", "treaty", "visa",
+        "选举", "议会", "法案", "政府", "总统", "首相", "制裁", "抗议", "示威",
+        "弹劾", "辞职", "声明", "警告", "决议", "投票", "签证", "大选",
+        "election", "parliament", "sanctions", "protest", "president",
+        "prime minister", "vote", "embassy", "visa",
+    ),
+    "diplomacy": (
+        "外交", "外长", "峰会", "谈判", "会谈", "会晤", "访问", "国事访问", "建交",
+        "联合国", "秘书长", "条约", "协议签署", "停火谈判", "斡旋",
+        "diplomatic", "summit", "talks", "treaty", "united nations",
+        "secretary-general", "state visit", "ambassador", "envoy", "negotiation",
+    ),
+    "energy": (
+        "能源", "石油", "原油", "天然气", "液化天然气", "油价", "管道", "电站",
+        "核电站", "电力", "光伏", "风电", "储能", "炼油", "opec",
+        "energy", "oil", "crude", "natural gas", "lng", "pipeline", "refinery",
+        "power plant", "electricity", "renewable", "solar", "wind power", "opec",
+    ),
+    "shipping": (
+        "航运", "海运", "港口", "货轮", "商船", "船只", "航道", "集装箱", "海峡",
+        "封锁", "船运", "油轮", "码头",
+        "霍尔木兹", "苏伊士", "马六甲", "巴拿马运河", "红海", "亚丁湾", "曼德海峡",
+        "shipping", "maritime", "vessel", "tanker", "freight", "port",
+        "strait", "blockade", "container ship", "cargo ship", "houthi",
     ),
     "economic": (
         "经济", "贸易", "关税", "股市", "通胀", "利率", "央行", "金融", "财报",
-        "营收", "利润", "供应链", "油价", "出口", "进口", "gdp", "cpi", "企业营收",
+        "营收", "利润", "供应链", "出口", "进口", "gdp", "cpi", "企业营收",
         "economy", "trade", "tariff", "stock market", "inflation", "interest rate",
-        "central bank", "earnings", "revenue", "supply chain", "oil price", "opec",
+        "central bank", "earnings", "revenue", "supply chain",
         "fine", "fines", "payment", "antitrust",
     ),
     "social": (
@@ -101,9 +130,14 @@ _ASCII_KW_CACHE: dict[str, re.Pattern[str]] = {}
 
 
 def _ascii_pattern(kw: str) -> re.Pattern[str]:
+    """英文关键词边界：前后不能是英文字母（中文/数字/标点都允许）。
+
+    2026-10-29: 原用 `\\b`，中文与英文紧贴时（"两条LNG生产线"、"MQ-1无人机"）
+    两侧都是 Unicode 词字符，`\\b` 不成立 → 英文关键词在中文正文里大量漏匹配。
+    """
     pat = _ASCII_KW_CACHE.get(kw)
     if pat is None:
-        pat = re.compile(rf"\b{re.escape(kw)}\b")
+        pat = re.compile(rf"(?<![A-Za-z]){re.escape(kw)}(?![A-Za-z])")
         _ASCII_KW_CACHE[kw] = pat
     return pat
 
@@ -147,7 +181,6 @@ def classify_event(title: str, content: str = "") -> str:
         if scores.get(cat, 0) == best:
             return cat
     return "other"
-
 
 def is_intel_type(event_type: str | None) -> bool:
     """是否情报类事件（简报「要闻」区）。"""

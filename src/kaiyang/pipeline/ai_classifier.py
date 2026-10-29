@@ -16,7 +16,8 @@ from ..config import settings
 
 
 THREAT_LEVELS = ["info", "low", "medium", "high", "critical"]
-TOPICS = ["conflict", "diplomacy", "economy", "disaster", "technology", "health", "environment", "politics", "military", "other"]
+TOPICS = ["conflict", "diplomacy", "energy", "economy", "disaster", "technology",
+          "health", "environment", "politics", "military", "shipping", "other"]
 
 
 async def classify_article(item: IntelItem) -> dict | None:

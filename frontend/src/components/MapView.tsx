@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, useMemo } from 'react'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import {
-  TYPE_COLORS, eventKind, facilityKind, nodeIcon, pinIcon, relationColor,
+  TYPE_COLORS, TYPE_LABELS, eventKind, facilityKind, nodeIcon, pinIcon, relationColor,
 } from './mapIcons'
 
 interface GeoPoint { id: string; title: string; lat: number; lng: number; country_code?: string; severity?: number; confidence?: number; source_count?: number; time_start?: string; published_at?: string; type?: string; event_type?: string; url?: string; relation?: string; seq?: number; prev_id?: string | null; issue_id?: string; issue_title?: string }
@@ -69,6 +69,9 @@ export default function MapView({ events, searchResults, annotations, chain, fly
   // ── 时间轴回放 (2026-08-26): 滑块拖动 → 只显示该日期前(含)的事件 ──
   const [timeCursor, setTimeCursor] = useState<number | null>(null)  // epoch ms; null=全部
   const [showTimeline, setShowTimeline] = useState(false)
+  // 分类筛选：点击图例切换某类事件显示/隐藏（"新闻分类 → 标志也分类"）
+  const [hiddenKinds, setHiddenKinds] = useState<string[]>([])
+  const hiddenSet = useMemo(() => new Set(hiddenKinds), [hiddenKinds])
 
   const timeBounds = useMemo(() => {
     const ts = events.map(e => new Date(e.time_start || e.published_at || '').getTime()).filter(t => !isNaN(t))
@@ -83,6 +86,16 @@ export default function MapView({ events, searchResults, annotations, chain, fly
       return isNaN(t) || t <= timeCursor
     })
   }, [events, timeCursor, timeBounds])
+
+  // 各分类计数（图例显示 + 筛选展示）
+  const kindCounts = useMemo(() => {
+    const counts: Record<string, number> = {}
+    for (const e of visibleEvents) {
+      const k = eventKind(e.event_type)
+      counts[k] = (counts[k] || 0) + 1
+    }
+    return counts
+  }, [visibleEvents])
 
   useEffect(() => {
     if (mapRef.current) return
@@ -174,7 +187,8 @@ export default function MapView({ events, searchResults, annotations, chain, fly
     if (!g) return
     const caches = markersRef.current
     const quakes = visibleEvents.filter(e => e.title?.toLowerCase().includes('earthquake') || e.title?.toLowerCase().includes('magnitude'))
-    const others = visibleEvents.filter(e => !quakes.includes(e))
+    // 分类筛选：隐藏被点掉的类别
+    const others = visibleEvents.filter(e => !quakes.includes(e) && !hiddenSet.has(eventKind(e.event_type)))
 
     diffMarkers(caches.event, g['实时事件'], others, (e, isNew) => {
       const sev = e.severity || 1
@@ -210,7 +224,7 @@ export default function MapView({ events, searchResults, annotations, chain, fly
         keyboard: false,
       } as any).bindPopup(`<div style="max-width:280px"><b>${escHtml(e.title || '')}</b><br><small style="color:#64748b">${e.country_code || ''}${extra}</small></div>`)
     }, e => `${e.title}|${e.lat.toFixed(3)}|${e.lng.toFixed(3)}`)
-  }, [visibleEvents, searchResults])
+  }, [visibleEvents, searchResults, hiddenSet])
 
   // ── Annotations：数据变化才重建 ──
   useEffect(() => {
@@ -338,19 +352,29 @@ export default function MapView({ events, searchResults, annotations, chain, fly
     <>
       <div id="map-container" style={{ width: '100%', height: '100%', position: 'relative' }} />
 
-      {/* 图例：类型配色 + 高危脉冲 */}
+      {/* 图例 / 分类筛选：点击类别可显示/隐藏该类新闻标记 */}
       <div className="ky-legend">
-        <span className="ky-legend__title">图例</span>
-        {(Object.keys(TYPE_COLORS) as (keyof typeof TYPE_COLORS)[]).slice(0, 7).map(k => (
-          <span key={k} className="ky-legend__item" style={{ color: TYPE_COLORS[k] }}>
-            <i />
-            <em style={{ fontStyle: 'normal', color: '#94a3b8' }}>
-              {{ conflict: '冲突', military: '军事', disaster: '灾害', political: '政治', economic: '经济', social: '社会', tech: '科技' }[k]}
-            </em>
-          </span>
-        ))}
+        <span className="ky-legend__title">分类</span>
+        {(Object.keys(TYPE_COLORS) as (keyof typeof TYPE_COLORS)[]).map(k => {
+          const off = hiddenSet.has(k)
+          const count = kindCounts[k] || 0
+          return (
+            <button
+              key={k}
+              className={'ky-legend__item' + (off ? ' off' : '')}
+              style={{ color: TYPE_COLORS[k] }}
+              title={`点击${off ? '显示' : '隐藏'}「${TYPE_LABELS[k]}」`}
+              onClick={() => setHiddenKinds(prev => prev.includes(k) ? prev.filter(x => x !== k) : [...prev, k])}
+            >
+              <i />
+              <em>{TYPE_LABELS[k]}</em>
+              {count > 0 && <b>{count}</b>}
+            </button>
+          )
+        })}
         <span className="ky-legend__sep" />
-        <span className="ky-legend__item" style={{ color: '#ef4444' }}><i className="ky-legend__ring" />高危脉冲</span>
+        <button className="ky-legend__reset" onClick={() => setHiddenKinds([])}>全部</button>
+        <span className="ky-legend__hint">点击分类可过滤标记</span>
       </div>
 
       {/* 专题图层管理面板 */}

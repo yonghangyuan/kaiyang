@@ -141,7 +141,7 @@ TOOLS: list[dict[str, Any]] = [
         "inputSchema": {
             "type": "object",
             "properties": {
-                "event_type": {"type": "string", "description": "事件类型: conflict / military / disaster / political / economic / social / tech / other（前五类为情报类）"},
+                "event_type": {"type": "string", "description": "事件类型: conflict / military / disaster / political / diplomacy / economic / energy / shipping / social / tech / other（前八类为情报类）"},
                 "country_code": {"type": "string", "description": "ISO 3166-1 alpha-2 国家代码"},
                 "limit": {"type": "integer", "description": "返回条数上限（默认 50）", "default": 50},
             },

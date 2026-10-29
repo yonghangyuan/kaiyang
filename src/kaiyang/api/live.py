@@ -11,11 +11,11 @@ from sqlalchemy import func, select
 
 from ..db import async_session
 from ..models import Event, IntelItem, Issue, IssueEvent, IssueFinding, Source
+from ..pipeline.event_classifier import INTEL_TYPES as _INTEL_TYPES
 
 router = APIRouter(prefix="/api/live", tags=["live"])
 
 CST = timezone(timedelta(hours=8))
-_INTEL_TYPES = ("conflict", "military", "disaster", "political", "economic")
 
 
 def _to_cst(value: datetime | None) -> tuple[str, int]:
