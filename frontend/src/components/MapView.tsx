@@ -1,17 +1,66 @@
 import { useEffect, useRef, useState, useMemo } from 'react'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
+import {
+  TYPE_COLORS, eventKind, facilityKind, nodeIcon, pinIcon, relationColor,
+} from './mapIcons'
 
-interface GeoPoint { id: string; title: string; lat: number; lng: number; country_code?: string; severity?: number; confidence?: number; source_count?: number; time_start?: string; published_at?: string; type?: string; url?: string; relation?: string; seq?: number; prev_id?: string | null; issue_id?: string; issue_title?: string }
+interface GeoPoint { id: string; title: string; lat: number; lng: number; country_code?: string; severity?: number; confidence?: number; source_count?: number; time_start?: string; published_at?: string; type?: string; event_type?: string; url?: string; relation?: string; seq?: number; prev_id?: string | null; issue_id?: string; issue_title?: string }
 interface Annotation { id: string; name: string; description?: string; type: string; coordinates: any; style?: any }
 
 interface ChainData { nodes: {id:string; lat:number; lng:number; relation:string; title:string; severity:number}[]; edges: {from:string; to:string; from_relation:string; to_relation:string}[] }
 interface TopicLayer { issue_id: string; name: string; category?: string; events?: number; mappable_events?: number }
 interface Props { events: GeoPoint[]; searchResults: GeoPoint[]; annotations: Annotation[]; chain?: ChainData | null; flyTo?: {lat:number;lng:number} | null; topicLayers?: TopicLayer[]; activeTopics?: string[]; onToggleTopic?: (issueId: string) => void }
 
+interface MarkerCache { [id: string]: { m: L.Marker; sig: string } }
+
+// 差分更新图层标记：同 id 同签名 → 原地保留（避免每次轮询整层重建造成的闪烁/重播动画）；
+// 新 id → 新建 marker 并播放入场动画；消失的 id → 移除。
+function diffMarkers(
+  cache: MarkerCache,
+  layer: L.LayerGroup,
+  items: GeoPoint[],
+  build: (item: GeoPoint, isNew: boolean) => L.Marker,
+  sigOf: (item: GeoPoint) => string,
+) {
+  const alive = new Set<string>()
+  for (const it of items) {
+    if (!it.lat || !it.lng) continue
+    alive.add(it.id)
+    const sig = sigOf(it)
+    const hit = cache[it.id]
+    if (hit && hit.sig === sig) {
+      hit.m.setLatLng([it.lat, it.lng])
+      continue
+    }
+    if (hit) layer.removeLayer(hit.m)
+    const marker = build(it, !hit)
+    marker.addTo(layer)
+    cache[it.id] = { m: marker, sig }
+  }
+  for (const [id, hit] of Object.entries(cache)) {
+    if (!alive.has(id)) {
+      layer.removeLayer(hit.m)
+      delete cache[id]
+    }
+  }
+}
+
+const fmtLocal = (iso?: string) => {
+  if (!iso) return ''
+  const d = new Date(iso.includes('T') ? iso : iso.replace(' ', 'T') + 'Z')
+  if (isNaN(d.getTime())) return iso.substring(0, 16)
+  return d.toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false })
+}
+const COUNTRY_LABEL: Record<string, string> = { TW: '中国台湾', HK: '中国香港', MO: '中国澳门' }
+const escHtml = (s: string) => String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;')
+
 export default function MapView({ events, searchResults, annotations, chain, flyTo, topicLayers = [], activeTopics = [], onToggleTopic }: Props) {
   const mapRef = useRef<L.Map | null>(null)
   const groupsRef = useRef<Record<string, L.LayerGroup>>({})
+  // 图层 marker 缓存（差分更新用）
+  const markersRef = useRef<Record<string, MarkerCache>>({ event: {}, quake: {}, search: {}, annotation: {}, chain: {}, facility: {} })
+  const facilitiesLoadedRef = useRef(false)
   // ── 多源卫星底图 (2026-08-26, 奥维方向): 后端 /api/map/basemaps 驱动 ──
   const [basemaps, setBasemaps] = useState<Record<string, any>>({})
   useEffect(() => {
@@ -35,13 +84,15 @@ export default function MapView({ events, searchResults, annotations, chain, fly
     })
   }, [events, timeCursor, timeBounds])
 
-  // Separate events by type
-  const earthquakeEvents = visibleEvents.filter(e => e.title?.toLowerCase().includes('earthquake') || e.title?.toLowerCase().includes('magnitude'))
-  const otherEvents = visibleEvents.filter(e => !earthquakeEvents.includes(e))
-
   useEffect(() => {
     if (mapRef.current) return
-    const map = L.map('map-container').setView([35, 105], 4)
+    const map = L.map('map-container', {
+      zoomSnap: 0.25,
+      wheelPxPerZoomLevel: 100,
+      fadeAnimation: true,
+      zoomAnimation: true,
+      markerZoomAnimation: true,
+    }).setView([35, 105], 4)
 
     // 静态底图: 高德矢量(默认)。动态卫星源(NASA/天地图/自定义XYZ)由 basemaps effect 注入
     const baseTiles: Record<string, L.TileLayer> = {
@@ -101,120 +152,132 @@ export default function MapView({ events, searchResults, annotations, chain, fly
     ;(map as any)._kaiyangBaseTiles = existing
   }, [basemaps])
 
-  // Update data layers
+  const makePopup = (e: GeoPoint, extra: string) => {
+    const sev = e.severity || 1
+    let html = `<div style="max-width:300px"><b>${escHtml(e.title || '')}</b>`
+    html += `<br><small style="color:#64748b">${COUNTRY_LABEL[e.country_code || ''] || e.country_code || '?'} | ${fmtLocal(e.time_start || e.published_at)} | imp:${sev}/10`
+    if (e.source_count) html += ` | ${e.source_count}sources`
+    html += `</small>${extra}`
+    html += `<br><a href="#" onclick="event.preventDefault();window.loadEventItems('${e.id}')" style="font-size:11px">查看报道</a>`
+    html += ` | <a href="#" onclick="event.preventDefault();window.tianshuPopup('${encodeURIComponent((e.title || '').substring(0, 80))}')" style="font-size:11px">Tianshu</a>`
+    html += `<div id="evt-items-${e.id}" style="margin-top:4px"></div></div>`
+    return html
+  }
+
+  // ── 实时事件 / 地震 / 搜索：差分更新（不整层 clear，避免闪烁和动画重播）──
   useEffect(() => {
     const g = groupsRef.current
     if (!g) return
-    const esc = (s: string) => String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;')
+    const caches = markersRef.current
+    const quakes = visibleEvents.filter(e => e.title?.toLowerCase().includes('earthquake') || e.title?.toLowerCase().includes('magnitude'))
+    const others = visibleEvents.filter(e => !quakes.includes(e))
 
-    // Popup helper — uses global functions to avoid inline JS complexity
-    const fmtLocal = (iso?: string) => {
-      if (!iso) return ''
-      const d = new Date(iso.includes('T') ? iso : iso.replace(' ', 'T') + 'Z')
-      if (isNaN(d.getTime())) return iso.substring(0,16)
-      return d.toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false })
-    }
-    const COUNTRY_LABEL: Record<string, string> = { TW: '中国台湾', HK: '中国香港', MO: '中国澳门' }
-    const makePopup = (e: GeoPoint, extra: string) => {
+    diffMarkers(caches.event, g['实时事件'], others, (e, isNew) => {
       const sev = e.severity || 1
-      let html = `<div style="max-width:300px"><b>${esc(e.title||'')}</b>`
-      html += `<br><small style="color:#64748b">${COUNTRY_LABEL[e.country_code||''] || e.country_code || '?'} | ${fmtLocal(e.time_start || e.published_at)} | imp:${sev}/10`
-      if (e.source_count) html += ` | ${e.source_count}sources`
-      html += `</small>${extra}`
-      html += `<br><a href="#" onclick="event.preventDefault();window.loadEventItems('${e.id}')" style="font-size:11px">查看报道</a>`
-      html += ` | <a href="#" onclick="event.preventDefault();window.tianshuPopup('${encodeURIComponent((e.title||'').substring(0,80))}')" style="font-size:11px">Tianshu</a>`
-      html += `<div id="evt-items-${e.id}" style="margin-top:4px"></div></div>`
-      return html
-    }
+      const kind = eventKind(e.event_type)
+      const size = Math.round(20 + sev * 1.6)
+      const pulse = sev >= 7 ? 'fast' : sev >= 5 ? 'slow' : null
+      const tip = `${(e.title || '').substring(0, 42)}`
+      return L.marker([e.lat, e.lng], {
+        icon: pinIcon(kind, TYPE_COLORS[kind], { size, pulse, animate: isNew }),
+        riseOnHover: true,
+        keyboard: false,
+      } as any)
+        .bindPopup(makePopup(e, ''), { maxWidth: 320, autoPanPadding: [24, 24] })
+        .bindTooltip(tip, { direction: 'top', offset: [0, -size / 2 - 2], opacity: 0.95, className: 'ky-tip' })
+    }, e => `${e.severity}|${e.event_type}|${e.lat.toFixed(3)}|${e.lng.toFixed(3)}|${e.title}`)
 
-    // Events layer
-    g['实时事件'].clearLayers()
-    otherEvents.forEach(e => {
-      if (!e.lat || !e.lng) return
-      const sev = e.severity || 1
-      const c = sev >= 7 ? '#ef4444' : sev >= 5 ? '#f97316' : sev >= 3 ? '#eab308' : '#22c55e'
-      const r = Math.min(6 + sev * 1.5, 20)
-      const m = L.circleMarker([e.lat, e.lng], { radius: r, fillColor: c, color: '#fff', weight: 1, fillOpacity: 0.85 })
-        .bindPopup(makePopup(e, ''))
-        .addTo(g['实时事件'])
-      if (sev >= 7) (m as any)._path?.classList?.add('severity-critical')
-      else if (sev >= 5) (m as any)._path?.classList?.add('severity-high')
-    })
+    diffMarkers(caches.quake, g['地震'], quakes, (e, isNew) => {
+      const mag = parseFloat((e.title || '').match(/M(\d+\.?\d*)/)?.[1] || '0')
+      const color = mag >= 7 ? '#7f1d1d' : mag >= 6 ? '#dc2626' : mag >= 5 ? '#f97316' : '#eab308'
+      const size = Math.min(22 + mag * 4, 46)
+      return L.marker([e.lat, e.lng], {
+        icon: pinIcon('quake', color, { size, label: `M${mag.toFixed(1)}`, pulse: mag >= 6 ? 'fast' : null, animate: isNew }),
+        riseOnHover: true,
+        keyboard: false,
+      } as any).bindPopup(makePopup(e, `<br><small style="color:${color}">M${mag.toFixed(1)}</small>`))
+    }, e => `${e.title}|${e.lat.toFixed(3)}|${e.lng.toFixed(3)}`)
 
-    // Earthquakes layer
-    g['地震'].clearLayers()
-    earthquakeEvents.forEach(e => {
-      if (!e.lat || !e.lng) return
-      const mag = parseFloat((e.title||'').match(/M(\d+\.?\d*)/)?.[1] || '0')
-      const r = Math.max(6, mag * 3)
-      const c = mag >= 7 ? '#7f1d1d' : mag >= 6 ? '#dc2626' : mag >= 5 ? '#f97316' : '#eab308'
-      L.circleMarker([e.lat, e.lng], { radius: r, fillColor: c, color: '#fff', weight: 2, fillOpacity: 0.7 })
-        .bindPopup(makePopup(e, `<br><small style="color:${c}">M${mag.toFixed(1)}</small>`))
-        .addTo(g['地震'])
-    })
+    diffMarkers(caches.search, g['Search Results'], searchResults, (e, isNew) => {
+      const extra = e.url ? `<br><a href="${escHtml(e.url)}" target="_blank" style="font-size:11px;color:#60a5fa">source ↗</a>` : ''
+      return L.marker([e.lat, e.lng], {
+        icon: pinIcon('search', '#38bdf8', { size: 24, animate: isNew }),
+        riseOnHover: true,
+        keyboard: false,
+      } as any).bindPopup(`<div style="max-width:280px"><b>${escHtml(e.title || '')}</b><br><small style="color:#64748b">${e.country_code || ''}${extra}</small></div>`)
+    }, e => `${e.title}|${e.lat.toFixed(3)}|${e.lng.toFixed(3)}`)
+  }, [visibleEvents, searchResults])
 
-    // Search layer
-    g['Search Results'].clearLayers()
-    searchResults.forEach(e => {
-      if (!e.lat || !e.lng) return
-      let extra = ''
-      if (e.url) extra += `<br><a href="${esc(e.url)}" target="_blank" style="font-size:11px;color:#60a5fa">source ↗</a>`
-      if (e.published_at) extra += ` | ${e.published_at.substring(0,16)}`
-      L.circleMarker([e.lat, e.lng], { radius: 7, fillColor: '#3b82f6', color: '#fff', weight: 1, fillOpacity: 0.7 })
-        .bindPopup(`<div style="max-width:280px"><b>${esc(e.title||'')}</b><br><small style="color:#64748b">${e.country_code||''}${extra}</small></div>`)
-        .addTo(g['Search Results'])
-    })
-
-    // Annotations layer
+  // ── Annotations：数据变化才重建 ──
+  useEffect(() => {
+    const g = groupsRef.current
+    if (!g) return
     g['Annotations'].clearLayers()
     annotations.forEach(a => {
       const coords = a.coordinates
       if (a.type === 'polyline' && Array.isArray(coords) && coords.length >= 2 && Array.isArray(coords[0])) {
-        L.polyline(coords as [number,number][], { color: (a.style as any)?.color || '#ef4444', weight: 3, opacity: 0.8 })
-          .bindPopup(`<b>${esc(a.name)}</b><br><small>${esc(a.description||'')}</small>`).addTo(g['Annotations'])
+        L.polyline(coords as [number, number][], { color: (a.style as any)?.color || '#ef4444', weight: 3, opacity: 0.8 })
+          .bindPopup(`<b>${escHtml(a.name)}</b><br><small>${escHtml(a.description || '')}</small>`).addTo(g['Annotations'])
       } else if (a.type === 'point' && Array.isArray(coords) && coords.length >= 2) {
-        L.circleMarker([coords[0] as number, coords[1] as number], { radius: 8, fillColor: '#a855f7', color: '#fff', weight: 2, fillOpacity: 0.9 })
-          .bindPopup(`<b>${esc(a.name)}</b><br><small>${esc(a.description||'')}</small>`).addTo(g['Annotations'])
+        L.marker([coords[0] as number, coords[1] as number], {
+          icon: pinIcon('annotation', '#a855f7', { size: 26 }),
+          riseOnHover: true,
+        } as any).bindPopup(`<b>${escHtml(a.name)}</b><br><small>${escHtml(a.description || '')}</small>`).addTo(g['Annotations'])
       }
     })
-    // Chain layer
+  }, [annotations])
+
+  // ── Chain：编号节点 + 关系色连线 ──
+  useEffect(() => {
+    const g = groupsRef.current
+    if (!g) return
     g['Chains'].clearLayers()
     if (chain) {
-      const relColors: Record<string,string> = { cause:'#3b82f6', trigger:'#f97316', core:'#ef4444', consequence:'#eab308', response:'#22c55e' }
       const nodeMap: Record<string, any> = {}
       chain.nodes.forEach((n, i) => {
         nodeMap[n.id] = n
-        const c = relColors[n.relation] || '#64748b'
-        L.circleMarker([n.lat, n.lng], { radius: 10, fillColor: c, color: '#fff', weight: 2, fillOpacity: 0.9 })
-          .bindPopup(`<b>${n.relation}</b>: ${esc(n.title||'')}`).addTo(g['Chains'])
-        L.divIcon({ html: `<div style="background:${c};color:#fff;border-radius:50%;width:20px;height:20px;text-align:center;line-height:20px;font-size:11px;font-weight:700">${i+1}</div>`, className: '', iconSize: [20,20] })
+        const c = relationColor(n.relation)
+        L.marker([n.lat, n.lng], {
+          icon: nodeIcon(i + 1, c),
+          riseOnHover: true,
+        } as any).bindPopup(`<b>${escHtml(n.relation)}</b>: ${escHtml(n.title || '')}`).addTo(g['Chains'])
       })
       chain.edges.forEach(e => {
         const a = nodeMap[e.from], b = nodeMap[e.to]
         if (a && b) {
-          L.polyline([[a.lat,a.lng],[b.lat,b.lng]], { color: '#eab308', weight: 2, dashArray: '6,4', opacity: 0.7 })
+          L.polyline([[a.lat, a.lng], [b.lat, b.lng]], { color: '#eab308', weight: 2, dashArray: '6,4', opacity: 0.7 })
             .bindPopup(`${e.from_relation} → ${e.to_relation}`).addTo(g['Chains'])
         }
       })
     }
+  }, [chain])
 
-    // Facilities layer (loaded once)
-    if (!g['设施库'].getLayers().length) {
-      fetch('/api/facilities?limit=200').then(r => r.json()).then(d => {
-        d.facilities.forEach((f: any) => {
-          if (!f.lat || !f.lng) return
-          const c = f.threat >= 5 ? '#ff4444' : f.threat >= 4 ? '#ff9944' : f.threat >= 3 ? '#ffcc00' : '#3b82f6'
-          const icons: Record<string,string> = { military_base:'🔴', nuclear:'☢️', port:'⚓', airport:'✈️', spaceport:'🚀', chokepoint:'⚠️' }
-          L.circleMarker([f.lat, f.lng], { radius: 6, fillColor: c, color: '#fff', weight: 1, fillOpacity: 0.9 })
-            .bindPopup(`<b>${icons[f.type]||'📍'} ${f.name}</b><br><small>${f.type} | ${f.country} | threat:${f.threat}/5<br>${f.description||''}</small>`)
-            .addTo(g['设施库'])
-        })
+  // ── 设施库：只加载一次 + 类型图标 ──
+  useEffect(() => {
+    const g = groupsRef.current
+    if (!g || facilitiesLoadedRef.current) return
+    facilitiesLoadedRef.current = true
+    fetch('/api/facilities?limit=200').then(r => r.json()).then(d => {
+      (d.facilities || []).forEach((f: any) => {
+        if (!f.lat || !f.lng) return
+        const color = f.threat >= 5 ? '#ef4444' : f.threat >= 4 ? '#f97316' : f.threat >= 3 ? '#eab308' : '#3b82f6'
+        const kind = facilityKind(f.type)
+        const typeLabel: Record<string, string> = {
+          military_base: '军事基地', nuclear: '核设施', port: '港口',
+          airport: '机场', spaceport: '航天港', chokepoint: '咽喉要道',
+        }
+        L.marker([f.lat, f.lng], {
+          icon: pinIcon(kind, color, { size: 20 }),
+          riseOnHover: true,
+        } as any).bindPopup(`<b>${typeLabel[f.type] || '设施'} · ${escHtml(f.name)}</b><br><small>${escHtml(f.country || '')} | 威胁:${f.threat}/5<br>${escHtml(f.description || '')}</small>`).addTo(g['设施库'])
       })
-    }
+    }).catch(() => { facilitiesLoadedRef.current = false })
+  }, [])
 
-    // FlyTo
-    if (flyTo) mapRef.current?.flyTo([flyTo.lat, flyTo.lng], 6, { duration: 1.5 })
-  }, [events, searchResults, annotations, otherEvents, earthquakeEvents, chain, flyTo])
+  // ── FlyTo：平滑飞行 ──
+  useEffect(() => {
+    if (flyTo) mapRef.current?.flyTo([flyTo.lat, flyTo.lng], 6, { duration: 1.6, easeLinearity: 0.22 })
+  }, [flyTo])
 
   // ── 专题图层（Issue 批次）：勾选显示、取消隐藏 ──
   const loadedTopicsRef = useRef<Record<string, GeoPoint[]>>({})
@@ -223,8 +286,6 @@ export default function MapView({ events, searchResults, annotations, chain, fly
     if (!g) return
     const map = mapRef.current
     if (!map) return
-    const esc = (s: string) => String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;')
-    const relColors: Record<string,string> = { cause:'#3b82f6', trigger:'#f97316', core:'#ef4444', consequence:'#eab308', response:'#22c55e' }
 
     // 移除已取消勾选的专题组
     Object.keys(g).forEach(key => {
@@ -248,18 +309,19 @@ export default function MapView({ events, searchResults, annotations, chain, fly
         // 连线（事件链顺序）
         pts.forEach(p => {
           if (p.prev_id && byId[p.prev_id] && p.lat && p.lng && byId[p.prev_id].lat) {
-            L.polyline([[byId[p.prev_id].lat!, byId[p.prev_id].lng!],[p.lat!, p.lng!]],
-              { color: relColors[p.relation||''] || '#94a3b8', weight: 2, dashArray: '4,4', opacity: 0.7 })
-              .bindTooltip(`${p.relation||''}: ${p.title||''}`)
+            L.polyline([[byId[p.prev_id].lat!, byId[p.prev_id].lng!], [p.lat!, p.lng!]],
+              { color: relationColor(p.relation), weight: 2, dashArray: '4,4', opacity: 0.7 })
+              .bindTooltip(`${p.relation || ''}: ${p.title || ''}`, { className: 'ky-tip' })
               .addTo(layer)
           }
         })
         // 节点
         pts.forEach(p => {
           if (!p.lat || !p.lng) return
-          const c = relColors[p.relation||''] || '#a855f7'
-          L.circleMarker([p.lat, p.lng], { radius: 8, fillColor: c, color: '#fff', weight: 2, fillOpacity: 0.9 })
-            .bindPopup(`<div style="max-width:280px"><b>${esc(p.title||'')}</b><br><small style="color:#64748b">${esc(p.issue_title||'')} | ${p.relation||''} | ${p.time_start?.substring(0,10)||''} | conf:${p.confidence}</small></div>`)
+          L.marker([p.lat, p.lng], {
+            icon: pinIcon(eventKind(p.event_type), relationColor(p.relation), { size: 22 }),
+            riseOnHover: true,
+          } as any).bindPopup(`<div style="max-width:280px"><b>${escHtml(p.title || '')}</b><br><small style="color:#64748b">${escHtml(p.issue_title || '')} | ${p.relation || ''} | ${p.time_start?.substring(0, 10) || ''} | conf:${p.confidence}</small></div>`)
             .addTo(layer)
         })
         layer.addTo(map)
@@ -271,6 +333,20 @@ export default function MapView({ events, searchResults, annotations, chain, fly
   return (
     <>
       <div id="map-container" style={{ width: '100%', height: '100%', position: 'relative' }} />
+
+      {/* 图例：类型配色 + 高危脉冲 */}
+      <div className="ky-legend">
+        <span className="ky-legend__title">图例</span>
+        {(Object.keys(TYPE_COLORS) as (keyof typeof TYPE_COLORS)[]).slice(0, 7).map(k => (
+          <span key={k} className="ky-legend__item">
+            <i style={{ background: TYPE_COLORS[k] }} />
+            {{ conflict: '冲突', military: '军事', disaster: '灾害', political: '政治', economic: '经济', social: '社会', tech: '科技' }[k]}
+          </span>
+        ))}
+        <span className="ky-legend__sep" />
+        <span className="ky-legend__item"><i className="ky-legend__ring" />高危脉冲</span>
+      </div>
+
       {/* 专题图层管理面板 */}
       <div style={{
         position: 'absolute', top: 10, right: 10, zIndex: 1000,

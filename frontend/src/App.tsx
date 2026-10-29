@@ -45,7 +45,9 @@ export default function App() {
     try { setStats(await api.stats()) } catch {}
   }
   // SSE 实时连接 (参考 Redroom SSE data pump)
+  // ?static=1 时跳过——headless 截图/离线预览不会被长连接挂住
   useEffect(() => {
+    if (new URLSearchParams(window.location.search).has('static')) return
     const es = new EventSource('/api/sse')
     es.onmessage = (evt) => {
       try {

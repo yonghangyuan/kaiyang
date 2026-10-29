@@ -22,3 +22,7 @@ backups/
 reports/.export-*
 # 运行日志（服务/简报/抓取），不入库
 reports/*.log
+
+# 截图/临时验证产物
+tools/*-shot.png
+task_backups/

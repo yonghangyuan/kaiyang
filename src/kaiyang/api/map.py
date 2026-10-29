@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from fastapi import APIRouter, Request
@@ -22,10 +23,18 @@ async def basemaps():
 
 @router.post("/plot")
 async def plot_events(request: Request):
-    """返回地理标注点——优先展示聚合事件，无事件时回退到原始情报。"""
+    """返回地理标注点——优先展示近期聚合事件，无事件时回退到原始情报。
+
+    2026-10-29: 排序从"纯 severity"改为**近期优先**。原先 UAP/三星堆等种子专题的
+    历史事件（severity 9）把地图霸屏，当前态势反而看不到；现在默认只看近 30 天，
+    按时间倒序（同日按 severity），历史链条交给专题图层。
+    """
     body = await request.json()
     keyword = body.get("keyword", "")
     limit = min(body.get("limit", 50), 200)
+    days = int(body.get("days", 30) or 0)
+    since = (datetime.now(timezone.utc).replace(tzinfo=None)
+             - timedelta(days=min(max(days, 1), 365))) if days > 0 else None
 
     from sqlalchemy import select, func, or_
 
@@ -38,6 +47,8 @@ async def plot_events(request: Request):
                 Event.lat.isnot(None),
                 Event.lng.isnot(None),
             )
+            if since is not None:
+                q = q.where(Event.time_start >= since)
             if keyword:
                 q = q.where(
                     or_(
@@ -45,7 +56,7 @@ async def plot_events(request: Request):
                         Event.description.contains(keyword),
                     )
                 )
-            q = q.order_by(Event.severity.desc(), Event.time_start.desc()).limit(limit)
+            q = q.order_by(Event.time_start.desc(), Event.severity.desc()).limit(limit)
             result = await db.execute(q)
             items = result.scalars().all()
 
@@ -63,6 +74,7 @@ async def plot_events(request: Request):
                     "time_start": e.time_start.isoformat() if e.time_start else None,
                     "time_end": e.time_end.isoformat() if e.time_end else None,
                     "type": "event",
+                    "event_type": e.event_type,
                 })
             return {"count": len(points), "source": "events", "points": points}
 
@@ -71,6 +83,8 @@ async def plot_events(request: Request):
             IntelItem.lat.isnot(None),
             IntelItem.lng.isnot(None),
         )
+        if since is not None:
+            q = q.where(IntelItem.published_at >= since)
         if keyword:
             q = q.where(
                 or_(
@@ -178,6 +192,7 @@ async def issue_points(issue_id: str, limit: int = 200):
                 "confidence": ev.confidence,
                 "time_start": ev.time_start.isoformat() if ev.time_start else None,
                 "type": "topic_event",
+                "event_type": ev.event_type,
                 "relation": relation,
                 "seq": seq,
                 "prev_id": prev if (prev and ev.lat and ev.lng) else None,

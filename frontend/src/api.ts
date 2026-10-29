@@ -10,7 +10,7 @@ async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
 }
 
 export interface Source { id: string; name: string; type: string; status: string; credibility_tier: number; last_fetch_at?: string }
-export interface GeoPoint { id: string; title: string; lat: number; lng: number; country_code?: string; severity?: number; confidence?: number; source_count?: number; time_start?: string; published_at?: string; type?: string; url?: string }
+export interface GeoPoint { id: string; title: string; lat: number; lng: number; country_code?: string; severity?: number; confidence?: number; source_count?: number; time_start?: string; published_at?: string; type?: string; event_type?: string; url?: string }
 export interface Briefing { query: string; summary: string; point_count: number; timeline_count: number; web_count?: number; points: GeoPoint[]; timeline: any[] }
 export interface Annotation { id: string; name: string; description?: string; type: string; coordinates: any; style?: any }
 export interface Stats { sources: number; intel: number; events: number; entities: number }
@@ -27,7 +27,7 @@ export const api = {
     ])
     return {sources:s.count, intel:i.total, events:e.count, entities:ent.total}
   },
-  events: (limit=100) => fetchJson<{count:number; points:GeoPoint[]}>('/api/map/plot', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({limit})}),
+  events: (limit=100) => fetchJson<{count:number; points:GeoPoint[]}>('/api/map/plot', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({limit, days: 30})}),
   search: (query:string, limit=30) => fetchJson<Briefing>('/api/search/briefing', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({query,limit})}),
   chat: (message:string) => fetchJson<{reply:string; model?:string; decision_id?:string; error?:boolean}>('/api/chat', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message})}),
   annotations: {
