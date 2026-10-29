@@ -51,13 +51,14 @@ _KEYWORDS: dict[str, tuple[str, ...]] = {
         # 留给 severity 评分，类别判定只看暴力/武装行为本身。
         "war", "airstrike", "air strike", "missile strike", "ceasefire", "invasion",
         "attack", "bombing", "shelling", "hostage", "terror",
+        "shooting", "gunman", "assassination", "drone strike", "drone attack",
     ),
     "military": (
         "军演", "军事演习", "演习", "部署", "增兵", "航母", "战机", "舰队", "军方",
         "国防", "导弹试射", "试射", "防空", "军售", "军费", "陆军", "海军", "空军",
         "military exercise", "drill", "troops", "deployment", "aircraft carrier",
         "navy", "air force", "defense ministry", "weapons", "arms sale", "missile test",
-        "defense chiefs", "security dialogue",
+        "defense chiefs", "security dialogue", "drone", "uav", "alliance",
     ),
     "disaster": (
         "地震", "洪水", "台风", "山火", "森林火", "林火", "海啸", "干旱", "暴雨", "泥石流", "坍塌",
@@ -120,10 +121,16 @@ def _count_hits(text: str, keywords: tuple[str, ...]) -> int:
 
 
 def classify_scores(title: str, content: str = "") -> dict[str, int]:
-    """每类得分：标题命中 ×2 + 正文命中 ×1。返回 {类别: 分}（含全 0 的类，便于调试）。"""
-    body = content or ""
+    """每类得分：标题命中 ×3 + 正文前 500 字命中 ×1。
+
+    2026-10-29 调权: 原先标题×2、正文全量×1 —— 事件描述动辄 2000 字，
+    长正文里的零散词会盖过标题（"Russian drone strike at Ukraine train
+    station, 13 killed" 被正文里的政治词带成"政治"）。标题是编辑写的最强信号，
+    正文只取前 500 字防长尾噪声。
+    """
+    body = (content or "")[:500]
     return {
-        cat: 2 * _count_hits(title or "", kws) + _count_hits(body, kws)
+        cat: 3 * _count_hits(title or "", kws) + _count_hits(body, kws)
         for cat, kws in _KEYWORDS.items()
     }
 

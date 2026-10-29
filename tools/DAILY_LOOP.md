@@ -72,6 +72,16 @@ DSH 里直接说：
    抓取批量写库时 startup 后台任务读会被锁死，偶发 `database is locked`）。
    `init_db` 补 `from . import models` 保证建表不依赖导入顺序。
    回归工具 `tools/stress_db.py`：4写+4读×10s → 5200 写 / 2422 读 / **0 错误**。
+9. ✅ **已修（2026-10-29）审批闭环 + 简报降噪**：
+   - MCP 新增 `list_pending_findings` / `review_finding`（批准执行 chain proposal / 驳回留档），
+     简报 §四 直接列「待审批建议 + id」，DSH 里说「批/驳 <id>」即可完成闭环。
+   - AI 分类静默失效修复：`raw_data` 原地改不置 dirty → 日志"完成 4 篇"但库里 0 条标签。
+     改为 copy 后赋值 + 每条短事务；新增 `tools/classify_items.py` 批量补标签（06:45 随简报任务跑）。
+   - 简报 §三 从"纯时间序"改为 **主题过滤 + 入池/重要度/tier 排序**；新增 §六 系统健康
+     （LLM/标签覆盖/待审批/WAL/库大小）。事件分类权重改为标题×3 + 正文前 500 字。
+   - 专题建议去重：同一结论每 6h 重复提报 → 与近 7 天发现做相似度（包含/ratio/3-gram/jieba 词重叠）
+     比对，近重复跳过（实测一轮 `duplicates=1`）。
+   - 验证：MCP 工具 17 → 19；AI 标签 0 → 40；全量 263 tests。
 
 ## 四、不建议现在做
 

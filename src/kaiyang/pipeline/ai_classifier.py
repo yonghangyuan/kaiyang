@@ -63,29 +63,45 @@ JSON:"""
 
 
 async def classify_recent_articles(limit: int = 10) -> int:
-    """对最近未分类的文章进行 AI 分类（后台异步）。
-    返回成功分类数量。
+    """对最近未分类的文章进行 AI 分类（后台异步）。返回成功分类数量。
+
+    2026-10-29 两处修复:
+    1. 静默不落库: `raw = item.raw_data` 拿到同一个 dict，原地改再赋值回去不会
+       置 dirty → commit 什么也不写（日志报"完成 4 篇"，库里 0 条标签）。必须 copy。
+    2. 长事务堵 checkpoint: 原实现整个 LLM 循环都攥着同一个 session（读快照 +
+       空闲连接），WAL 的 checkpoint 因此长期被阻塞（WAL 涨到几十 MB）。
+       现在先取候选、关 session，再逐条"分类（不持连接）→ 短事务写回"。
     """
-    classified = 0
+    # 1) 取候选（短事务，随后即关）
     async with async_session() as db:
-        # 查找 raw_data 中没有 ai_classification 的文章
         result = await db.execute(
-            select(IntelItem).order_by(IntelItem.published_at.desc()).limit(limit)
+            select(IntelItem).order_by(IntelItem.published_at.desc())
+            .limit(max(limit * 4, 40))
         )
-        items = result.scalars().all()
+        candidates = [
+            (it.id, it.title, it.content)
+            for it in result.scalars().all()
+            if "ai_classification" not in (it.raw_data or {})
+        ][:limit]
 
-        for item in items:
-            raw = item.raw_data or {}
-            if "ai_classification" in raw:
+    classified = 0
+    for item_id, title, content in candidates:
+        try:
+            from types import SimpleNamespace
+            ai_result = await classify_article(SimpleNamespace(title=title, content=content))
+        except Exception:
+            ai_result = None
+        if not ai_result:
+            continue
+        # 2) 每条约 1 秒级 LLM 调用结束后，才开一个短事务写回
+        async with async_session() as db:
+            obj = await db.get(IntelItem, item_id)
+            if obj is None:
                 continue
-
-            ai_result = await classify_article(item)
-            if ai_result:
-                raw["ai_classification"] = ai_result
-                item.raw_data = raw
-                classified += 1
-
-        if classified > 0:
+            raw = dict(obj.raw_data or {})   # copy：同对象赋值不置 dirty（见上）
+            raw["ai_classification"] = ai_result
+            obj.raw_data = raw
             await db.commit()
+            classified += 1
 
     return classified

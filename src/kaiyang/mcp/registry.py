@@ -428,6 +428,52 @@ TOOLS: list[dict[str, Any]] = [
             }),
         }, required=["ok"]),
     },
+    {
+        "name": "list_pending_findings",
+        "description": "列出待审批的专题结构性建议（chain: 建议新建事件/加源）。审批前先看这里；审批用 review_finding。",
+        "annotations": _RO,
+        "_outputBudgetBytes": LIST_OUTPUT_BUDGET_BYTES,
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "issue_id": {"type": "string", "description": "只看某个专题（可选）"},
+                "limit": {"type": "integer", "description": "返回条数上限（默认 20，上限 50）", "default": 20},
+            },
+        },
+        "outputSchema": _item({
+            "count": {"type": "integer"},
+            "findings": _arr(_item({
+                "id": {"type": "string"},
+                "issue_id": {"type": "string"},
+                "issue_title": {"type": "string"},
+                "type": {"type": "string", "description": "chain / note"},
+                "content": {"type": "string"},
+                "proposal": {"type": ["object", "null"], "description": "结构化建议（chain 类）"},
+                "created_at": {"type": ["string", "null"]},
+            })),
+        }, required=["count"]),
+    },
+    {
+        "name": "review_finding",
+        "description": "审批一条专题结构性建议：approve=true 执行（chain→新建事件并挂入事件链；add_source→建源），approve=false 驳回留档。审批前先用 list_pending_findings 看内容。",
+        "annotations": _WRITE,
+        "_outputBudgetBytes": SMALL_OUTPUT_BUDGET_BYTES,
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "finding_id": {"type": "string", "description": "Finding ID（FD-xxx）"},
+                "approve": {"type": "boolean", "description": "true=批准执行, false=驳回"},
+                "note": {"type": "string", "description": "审批备注（可选，写入 reviewed_note）"},
+            },
+            "required": ["finding_id", "approve"],
+        },
+        "outputSchema": _item({
+            "ok": {"type": "boolean"},
+            "finding_id": {"type": "string"},
+            "status": {"type": "string"},
+            "executed": {"type": ["object", "null"], "description": "批准后执行的副作用（新建事件 id 等）"},
+        }, required=["ok"]),
+    },
 ]
 
 

@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sqlite3
 import sys
 from collections import Counter
@@ -34,6 +35,54 @@ TYPE_LABEL = {
 }
 # 情报类（与 src/kaiyang/pipeline/event_classifier.INTEL_TYPES 保持一致）
 INTEL_TYPES = ("conflict", "military", "disaster", "political", "economic")
+
+# ── 主题标签（§三 降噪）────────────────────────────────────────
+# 优先用 ai_classification.topic（LLM 标签）；没有标签的条目用规则分类器兜底。
+_SRC = ROOT / "src"
+if str(_SRC) not in sys.path:
+    sys.path.insert(0, str(_SRC))
+try:
+    from kaiyang.pipeline.event_classifier import classify_event as _rule_classify
+except Exception:  # 独立脚本兜底：没装源码也能出简报
+    _rule_classify = None
+
+# ai_classification.topic 的取值（ai_classifier.TOPICS）→ 是否情报类
+_AI_INTEL_TOPICS = {"conflict", "military", "disaster", "political", "politics",
+                    "diplomacy", "economy"}
+# ai topic 的展示名（与 TYPE_LABEL 对齐）
+_AI_TOPIC_LABEL = {
+    "diplomacy": "外交", "politics": "政治", "economy": "经济",
+    "technology": "科技", "health": "卫生", "environment": "环境",
+}
+
+
+def _item_topic(row: sqlite3.Row) -> tuple[str, str]:
+    """返回 (topic, kind)。kind: ai=LLM 标签 / rule=规则分类 / other=兜底。"""
+    raw: dict = {}
+    try:
+        raw = json.loads(row["raw_data"] or "{}")
+    except (ValueError, TypeError):
+        raw = {}
+    ai = raw.get("ai_classification") or {}
+    topic = str(ai.get("topic") or "").lower()
+    if topic:
+        return topic, "ai"
+    if _rule_classify is not None:
+        try:
+            return _rule_classify(row["title"] or "", ""), "rule"
+        except Exception:
+            pass
+    return "other", "other"
+
+
+def _is_intel_topic(topic: str, kind: str) -> bool:
+    if kind == "ai":
+        return topic in _AI_INTEL_TOPICS
+    return topic in INTEL_TYPES
+
+
+def _topic_label(topic: str) -> str:
+    return _AI_TOPIC_LABEL.get(topic) or TYPE_LABEL.get(topic) or topic
 
 
 def _parse_utc(value: str | None) -> datetime | None:
@@ -73,6 +122,7 @@ def build(hours: int, top: int) -> tuple[str, dict]:
 
     new_items = cur.execute(
         """select i.id, i.title, i.url, i.published_at, i.fetched_at, i.country_code,
+                  i.raw_data,
                   coalesce(s.name,'?') as source_name, coalesce(s.credibility_tier,4) as tier
            from intel_items i left join sources s on s.id = i.source_id
            where i.fetched_at >= ? order by i.published_at desc""", (since_s,)
@@ -97,6 +147,13 @@ def build(hours: int, top: int) -> tuple[str, dict]:
            where f.created_at >= ? order by f.created_at desc limit ?""",
         (since_s, top)
     ).fetchall()
+    # 待审批的结构性建议（全库，不限窗口——审批闭环入口）
+    pending_findings = cur.execute(
+        """select f.id, f.issue_id, f.finding_type, f.content, f.created_at,
+                  i.title as issue_title
+           from issue_findings f left join issues i on i.id=f.issue_id
+           where f.status='pending' order by f.created_at desc limit 8"""
+    ).fetchall()
 
     src_rows = cur.execute(
         "select status, count(*) c, max(last_fetch_at) m from sources group by status"
@@ -120,6 +177,57 @@ def build(hours: int, top: int) -> tuple[str, dict]:
     active_sources = {r["source_name"] for r in new_items}
     active_today = len(active_sources)
     total_today = len(new_items)
+
+    # §三 降噪: 情报类优先。LLM topic 优先，无标签走规则分类器。
+    # 排序: 入专题池(1) > 条目重要度(raw_data.importance) > tier > 新鲜度
+    # ——纯 tier+时间序会被"中新网滚动"的民生软新闻霸榜。
+    def _ts(r: sqlite3.Row) -> float:
+        dt = _parse_utc(r["published_at"])
+        return dt.timestamp() if dt else 0.0
+
+    def _raw(r: sqlite3.Row) -> dict:
+        try:
+            return json.loads(r["raw_data"] or "{}")
+        except (ValueError, TypeError):
+            return {}
+
+    def _rank_key(rt) -> tuple:
+        r = rt[0]
+        raw = _raw(r)
+        in_pool = 1 if raw.get("issues") else 0
+        importance = int(raw.get("importance") or 0)
+        return (-in_pool, -importance, r["tier"] or 4, -_ts(r))
+
+    tagged = [(r, *_item_topic(r)) for r in new_items]
+    intel_items = [(r, topic) for r, topic, kind in tagged if _is_intel_topic(topic, kind)]
+    other_items = [(r, topic) for r, topic, kind in tagged if not _is_intel_topic(topic, kind)]
+    intel_items.sort(key=_rank_key)
+    ai_tagged = sum(1 for _r, _t, kind in tagged if kind == "ai")
+
+    # §六 系统健康数据
+    _today_start = datetime.now(CST).replace(hour=0, minute=0, second=0, microsecond=0)
+    today_start_s = _today_start.astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+    items_today = _one(cur, "select count(*) from intel_items where fetched_at >= ?",
+                       (today_start_s,)) or 0
+    ai_classified_total = _one(
+        cur, "select count(*) from intel_items where raw_data like '%ai_classification%'") or 0
+    events_total = _one(cur, "select count(*) from events") or 0
+    report_count = _one(
+        cur, "select count(*) from intel_items i join sources s on s.id=i.source_id "
+             "where s.name='调查报告'") or 0
+    db_mb = DB_PATH.stat().st_size / 1024 / 1024 if DB_PATH.exists() else 0.0
+    _wal = DB_PATH.with_name(DB_PATH.name + "-wal")
+    wal_mb = _wal.stat().st_size / 1024 / 1024 if _wal.exists() else 0.0
+    try:
+        from kaiyang.pipeline.llm import status as _llm_status
+        _lst = _llm_status()
+        if _lst["configured"]:
+            llm_text = (f"`{_lst['model_deep']}` · key: {_lst['key_source']}"
+                        f"（{_lst['key_masked']}）")
+        else:
+            llm_text = f"未配置（{_lst['key_source']}）"
+    except Exception:
+        llm_text = "unknown"
 
     # 事件按「情报类优先、严重度优先」分桶（2026-10-29: event_type 规则分类落地后，
     # 体育/消费电子不再和地缘冲突挤同一个重要度榜）
@@ -193,23 +301,27 @@ def build(hours: int, top: int) -> tuple[str, dict]:
             add(f"- [{et}] {title} · 重要度 {ev['importance'] or '—'} · {_fmt_cst(ev['time_start'])}")
         add("")
 
-    add(f"## 三、新增情报 Top {min(top, len(new_items))}")
+    add(f"## 三、情报类新增 Top {min(top, len(intel_items))}")
     add("")
-    if not new_items:
-        add("_窗口内无新增条目。_")
+    if not intel_items:
+        add("_窗口内无情报类新增条目。_")
         add("")
     else:
-        for idx, r in enumerate(new_items[:top], 1):
+        for idx, (r, topic) in enumerate(intel_items[:top], 1):
             title = (r["title"] or "(无标题)").strip()
             url = r["url"] or ""
             cc = f"[{r['country_code']}] " if r["country_code"] else ""
             tier = f"T{r['tier']}" if r["tier"] else "T?"
             link = f"[{title}]({url})" if url else title
-            add(f"{idx}. {cc}{link}")
+            add(f"{idx}. [{_topic_label(topic)}] {cc}{link}")
             add(f"   - {r['source_name']} · {tier} · 发布 {_fmt_cst(r['published_at'], '%m-%d %H:%M')}")
         add("")
+    if other_items:
+        add(f"> 另有 **{len(other_items)}** 条非情报类条目（科技/社会/生活等）未列出；"
+            f"本窗口 AI 标签覆盖 {ai_tagged}/{total_today} 条。")
+        add("")
 
-    if watch_issues or new_findings:
+    if watch_issues or new_findings or pending_findings:
         add("## 四、专题进展")
         add("")
         by_issue: dict[str, list] = {}
@@ -224,6 +336,15 @@ def build(hours: int, top: int) -> tuple[str, dict]:
                 content = (f["content"] or "").replace("\n", " ")[:160]
                 add(f"  - [{f['finding_type']}] {content}")
             add("")
+        if pending_findings:
+            add("### 待审批建议（在 DSH 里说「批/驳 <id>」即可）")
+            add("")
+            for pf in pending_findings:
+                content = (pf["content"] or "").replace("\n", " ")[:100]
+                add(f"- [{pf['finding_type']}] {content}")
+                add(f"  - id={pf['id']} · 专题: {pf['issue_title'] or '—'}"
+                    f" · {_fmt_cst(pf['created_at'], '%m-%d %H:%M')}")
+            add("")
 
     add("## 五、源健康")
     add("")
@@ -234,6 +355,18 @@ def build(hours: int, top: int) -> tuple[str, dict]:
             + "; ".join(f"{s['name']}({_fmt_cst(s['last_fetch_at'], '%m-%d %H:%M')})" for s in stale_sources))
     add("")
 
+    add("## 六、系统健康")
+    add("")
+    add(f"- 源: active {src_health.get('active', {}).get('c', 0)}"
+        f" / paused {src_health.get('paused', {}).get('c', 0)}"
+        f" · 最近取数 {_fmt_cst(src_health.get('active', {}).get('m'))}")
+    add(f"- 今日累计入库 {items_today} 条（本窗口 {total_today} 条）")
+    add(f"- AI 标签覆盖 {ai_classified_total}/{total_items} 条（本窗口 {ai_tagged}/{total_today}）")
+    add(f"- 待审批 {pending} 条 · 事件总计 {events_total} 个 · 调查报告 {report_count} 份")
+    add(f"- 库: {db_mb:.1f} MB · WAL: {wal_mb:.1f} MB")
+    add(f"- LLM: {llm_text}")
+    add("")
+
     add("---")
     add("")
     add(f"> 数据源: `F:\\kaiyang\\kaiyang.db` · 生成器: `tools/daily_brief.py` · 仅供内部研判，转载须核源。")
@@ -241,6 +374,8 @@ def build(hours: int, top: int) -> tuple[str, dict]:
 
     meta = {
         "new_items": total_today,
+        "intel_items": len(intel_items),
+        "ai_tagged": ai_tagged,
         "new_events": len(new_events),
         "sources": active_today,
         "watch_issues": len(watch_issues),

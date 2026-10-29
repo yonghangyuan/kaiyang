@@ -58,8 +58,8 @@ async def _call(client: AsyncClient, name: str, arguments: dict, req_id: int = 1
 # ── 注册表纪律 ────────────────────────────────────────────────
 
 def test_every_tool_has_discipline_fields():
-    """17 工具每个必填 outputSchema + annotations 四布尔 + _outputBudgetBytes。"""
-    assert len(TOOLS) == 17
+    """19 工具每个必填 outputSchema + annotations 四布尔 + _outputBudgetBytes。"""
+    assert len(TOOLS) == 19
     for t in TOOLS:
         name = t["name"]
         assert t.get("outputSchema"), f"{name} 缺 outputSchema"
@@ -84,6 +84,9 @@ def test_annotation_flags_semantics():
     assert by_name["clear_annotations"]["annotations"]["destructiveHint"] is True
     assert by_name["get_events"]["annotations"]["readOnlyHint"] is True
     assert by_name["geocode"]["annotations"]["openWorldHint"] is True  # 触发外部 API
+    # 审批闭环（2026-10-29）: 读建议只读，审批写
+    assert by_name["list_pending_findings"]["annotations"]["readOnlyHint"] is True
+    assert by_name["review_finding"]["annotations"]["readOnlyHint"] is False
 
 
 # ── jmespath 投影 ──────────────────────────────────────────────

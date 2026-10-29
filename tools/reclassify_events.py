@@ -37,11 +37,16 @@ def main() -> int:
     con.row_factory = sqlite3.Row
     cur = con.cursor()
 
-    sql = "select id, title, description, event_type, created_at from events where event_type in ('news', 'other')"
-    params: tuple = ()
+    # 2026-10-29: 规则分类器调权后，历史"规则类"事件（含 political 等）也需要重分；
+    # 种子事件的 curated 类型（uap_disclosure/archaeology/finance_distortion）不动。
+    _RULE_TYPES = ("news", "other", "conflict", "military", "disaster",
+                   "political", "economic", "social", "tech")
+    _ph = ",".join("?" * len(_RULE_TYPES))
+    sql = f"select id, title, description, event_type, created_at from events where event_type in ({_ph})"
+    params: tuple = tuple(_RULE_TYPES)
     if args.days > 0:
         sql += " and created_at >= datetime('now', ?)"
-        params = (f"-{args.days} days",)
+        params = params + (f"-{args.days} days",)
     rows = cur.execute(sql, params).fetchall()
 
     before = Counter(r["event_type"] for r in rows)

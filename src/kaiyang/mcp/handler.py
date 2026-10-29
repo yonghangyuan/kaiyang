@@ -500,6 +500,48 @@ async def _dispatch_tool(tool_name: str, args: dict) -> dict:
                 "report_excerpt": excerpt,
             }
 
+        # ── 审批闭环（2026-10-29）: 结构化建议的读取与审阅 ─────────────
+
+        elif tool_name == "list_pending_findings":
+            from sqlalchemy import select
+            from ..db import async_session
+            from ..models import Issue, IssueFinding
+            q = select(IssueFinding).where(IssueFinding.status == "pending")
+            if args.get("issue_id"):
+                q = q.where(IssueFinding.issue_id == args["issue_id"])
+            q = q.order_by(IssueFinding.created_at.desc()).limit(min(int(args.get("limit", 20)), 50))
+            async with async_session() as db:
+                rows = (await db.execute(q)).scalars().all()
+                titles: dict[str, str] = {}
+                if rows:
+                    ids = {r.issue_id for r in rows}
+                    for iss in (await db.execute(select(Issue).where(Issue.id.in_(ids)))).scalars():
+                        titles[iss.id] = iss.title
+            return {
+                "count": len(rows),
+                "findings": [
+                    {
+                        "id": f.id,
+                        "issue_id": f.issue_id,
+                        "issue_title": titles.get(f.issue_id, ""),
+                        "type": f.finding_type,
+                        "content": f.content,
+                        "proposal": f.proposal,
+                        "created_at": f.created_at.isoformat() if f.created_at else None,
+                    }
+                    for f in rows
+                ],
+            }
+
+        elif tool_name == "review_finding":
+            # 复用 API 层同一套审批逻辑（approve 执行 proposal / reject 留档）
+            from ..api.watch import ReviewRequest, review_finding as _review
+            result = await _review(
+                str(args.get("finding_id", "")),
+                ReviewRequest(approve=bool(args.get("approve")), note=str(args.get("note", ""))),
+            )
+            return {"ok": True, **result}
+
         else:
             return {"error": f"Tool {tool_name} not implemented"}
 
