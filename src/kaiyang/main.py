@@ -543,8 +543,12 @@ async def map_page():
 
 
 @app.get("/health")
-async def health():
-    """健康检查。"""
+async def health(quick: bool = False):
+    """健康检查。?quick=1 跳过 redis/天枢外部探测（<0.3s），供看门狗/监控用。
+
+    2026-10-30: 天枢云服务早已下线，但原实现每次探测都等 5s 超时 + redis 不可达探测，
+    /health 实测 11.4s，看门狗/外部监控会误判。现在外部探测各自 ≤1-2s，quick 模式直接跳过。
+    """
     status = {
         "service": "kaiyang",
         "version": "0.1.0",
@@ -562,16 +566,22 @@ async def health():
     except Exception as e:
         status["db"] = f"error: {e}"
 
+    if quick:
+        status["redis"] = "skipped"
+        status["tianshu"] = {"status": "skipped"}
+        return JSONResponse(status)
+
     try:
-        r = await get_redis()
-        await r.ping()
+        import asyncio
+        r = await asyncio.wait_for(get_redis(), timeout=1.0)
+        await asyncio.wait_for(r.ping(), timeout=1.0)
         status["redis"] = "ok"
     except Exception:
         status["redis"] = "unavailable"
 
     try:
         import httpx
-        async with httpx.AsyncClient(timeout=5) as client:
+        async with httpx.AsyncClient(timeout=2) as client:
             resp = await client.get(f"{settings.tianshu_base_url}/health")
             status["tianshu"] = resp.json() if resp.status_code == 200 else {"status": "error"}
     except Exception:
