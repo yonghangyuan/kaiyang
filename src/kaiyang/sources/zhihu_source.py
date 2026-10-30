@@ -25,6 +25,35 @@ class ZhihuSource(AbstractSource):
     MEMBER_ACTIVITIES_URL = "https://www.zhihu.com/api/v4/members/{token}/activities"
     HOT_URL = "https://api.zhihu.com/topstory/hot-lists/total"
 
+    # 热榜噪声过滤（2026-10-30）: 体育/电竞/娱乐八卦对情报研判是纯噪声，
+    # 默认剔除；个别源可用 config.exclude_keywords 追加，或用 config.keep_all=true 关闭。
+    DEFAULT_EXCLUDE_KEYWORDS = (
+        # 体育
+        "世界杯", "欧洲杯", "欧冠", "亚冠", "NBA", "CBA", "中超", "英超", "西甲",
+        "意甲", "德甲", "联赛", "球队", "球员", "选手", "教练", "国足", "球迷",
+        "女单", "男单", "半决赛", "总决赛", "冠军赛", "奥运会", "亚运会", "全运会",
+        "夺冠", "转会", "进球", "MVP", "王曼昱", "孙颖莎", "樊振东", "王楚钦",
+        "陈熠", "张本智和", "梅西", "C罗", "姆巴佩", "詹姆斯", "库里",
+        # 电竞
+        "LPL", "KPL", "BLG", "WBG", "TES", "JDG", "Viper", "Faker", "电竞",
+        # 娱乐
+        "番剧", "动画", "影视", "电影", "电视剧", "综艺", "演唱会", "明星",
+        "选秀", "票房", "豆瓣", "偶像", "追星", "剧集", "追剧", "热播", "开播",
+        "演员", "导演", "主演", "剧情", "选角", "塌房", "爱豆", "恋情", "官宣",
+    )
+
+    def _is_noise(self, title: str, cfg: dict) -> bool:
+        """体育/电竞/娱乐标题过滤。config.keep_all=true 时不过滤。"""
+        if cfg.get("keep_all"):
+            return False
+        extra = cfg.get("exclude_keywords") or []
+        if isinstance(extra, str):
+            extra = [k.strip() for k in extra.split(",") if k.strip()]
+        for kw in tuple(self.DEFAULT_EXCLUDE_KEYWORDS) + tuple(extra):
+            if kw and kw in title:
+                return True
+        return False
+
     async def _fetch_hot(self, client: httpx.AsyncClient, cfg: dict) -> list[dict[str, Any]]:
         """知乎热榜（匿名可用）。返回问题级条目：标题/摘要/热度/回答数。"""
         limit = min(max(int(cfg.get("limit", 30)), 10), 50)
@@ -38,7 +67,7 @@ class ZhihuSource(AbstractSource):
         for feed in (resp.json().get("data") or [])[:limit]:
             target = feed.get("target") or {}
             title = (target.get("title") or "").strip()
-            if not title:
+            if not title or self._is_noise(title, cfg):
                 continue
             qid = str(target.get("id") or "")
             out.append({
