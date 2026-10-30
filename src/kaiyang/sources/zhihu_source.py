@@ -23,6 +23,36 @@ class ZhihuSource(AbstractSource):
 
     SEARCH_URL = "https://www.zhihu.com/api/v4/search_v3"
     MEMBER_ACTIVITIES_URL = "https://www.zhihu.com/api/v4/members/{token}/activities"
+    HOT_URL = "https://api.zhihu.com/topstory/hot-lists/total"
+
+    async def _fetch_hot(self, client: httpx.AsyncClient, cfg: dict) -> list[dict[str, Any]]:
+        """知乎热榜（匿名可用）。返回问题级条目：标题/摘要/热度/回答数。"""
+        limit = min(max(int(cfg.get("limit", 30)), 10), 50)
+        resp = await client.get(
+            self.HOT_URL,
+            params={"limit": limit},
+            headers={"Referer": "https://www.zhihu.com/", "Accept": "application/json"},
+        )
+        resp.raise_for_status()
+        out: list[dict[str, Any]] = []
+        for feed in (resp.json().get("data") or [])[:limit]:
+            target = feed.get("target") or {}
+            title = (target.get("title") or "").strip()
+            if not title:
+                continue
+            qid = str(target.get("id") or "")
+            out.append({
+                "id": qid or str(feed.get("id") or ""),
+                "title": title,
+                "content": (target.get("excerpt") or "")[:1000],
+                "url": f"https://www.zhihu.com/question/{qid}" if qid else "",
+                "created": target.get("created") or 0,
+                "type": target.get("type") or "question",
+                "voteup": target.get("follower_count") or 0,
+                "comment": target.get("answer_count") or 0,
+                "hot": feed.get("detail_text") or "",
+            })
+        return out
 
     def _activity_to_item(self, act: dict[str, Any]) -> dict[str, Any] | None:
         """把用户动态（activities API）转为标准条目。"""
@@ -62,6 +92,12 @@ class ZhihuSource(AbstractSource):
         headers = {"User-Agent": "Mozilla/5.0", "Accept": "application/json"}
 
         async with httpx.AsyncClient(timeout=15, headers=headers) as client:
+            # ── 热榜模式（2026-10-30 新增）: api.zhihu.com 旧接口无需登录 ──
+            # 搜索/用户动态 API 已强制登录（403/401），热榜接口仍匿名可用。
+            mode = str(cfg.get("mode") or "").lower()
+            if mode in ("hot", "hotlist", "hot_list"):
+                return await self._fetch_hot(client, cfg)
+
             # ── 用户追踪模式 ──
             users = [u.strip() for u in (cfg.get("users") or "").split(",") if u.strip()]
             for token in users[:5]:
