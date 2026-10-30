@@ -5,7 +5,7 @@
 from __future__ import annotations
 
 import asyncio
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 
 import pytest
 from httpx import ASGITransport, AsyncClient
@@ -96,11 +96,13 @@ async def test_live_flash_api(setup_db):
                    url="jin10://t", status="active", config={"adapter": "jin10"})
         db.add(s)
         await db.flush()
+        # 用相对时间：绝对时间写死会让测试随日期推移失败（2026-10-30 踩到）
+        fetched = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(hours=1)
         db.add(IntelItem(
             id=_new_id("IT"), source_id=s.id, title="快讯标题",
             content="快讯正文", url="https://flash.jin10.com/detail/1",
-            published_at=datetime(2026, 10, 29, 12, 0, 0),
-            fetched_at=datetime(2026, 10, 29, 12, 0, 1),
+            published_at=fetched - timedelta(minutes=1),
+            fetched_at=fetched,
             raw_data={"platform": "live_text", "important": 1},
         ))
         await db.commit()
@@ -126,9 +128,10 @@ async def test_live_summary_api(setup_db):
         iss = Issue(id=_new_id("IS"), title="测试专题", status="tracking", watch=1)
         db.add(iss)
         await db.flush()
+        # 相对时间——summary 只统计近 24h 事件，写死日期会过期
+        ts = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(hours=1)
         ev = Event(id=_new_id("EV"), title="测试事件", event_type="conflict",
-                   severity=5, importance=50, time_start=datetime(2026, 10, 29, 12, 0, 0),
-                   created_at=datetime(2026, 10, 29, 12, 0, 0))
+                   severity=5, importance=50, time_start=ts, created_at=ts)
         db.add(ev)
         await db.flush()
         db.add(IssueEvent(issue_id=iss.id, event_id=ev.id,
