@@ -336,16 +336,20 @@ import os as _os
 
 @app.get("/")
 async def spa_root():
-    """React SPA 首页。"""
+    """React SPA 首页。index.html 不缓存，保证前端重建后刷新即可生效。"""
     index_path = _os.path.join(_os.path.dirname(__file__), "webui", "index.html")
     if _os.path.exists(index_path):
-        return _FileResponse(index_path)
+        return _FileResponse(index_path, headers={
+            "Cache-Control": "no-cache, no-store, must-revalidate, max-age=0",
+            "Pragma": "no-cache",
+            "Expires": "0",
+        })
     return HTMLResponse("<h1>Frontend not built. Run: cd frontend && npm run build</h1>")
 
 
 @app.get("/assets/{path:path}")
 async def spa_assets(path: str):
-    """React SPA 静态资源。"""
+    """React SPA 静态资源。文件名带内容哈希 → 可长缓存。"""
     file_path = _os.path.join(_os.path.dirname(__file__), "webui", "assets", path)
     if _os.path.exists(file_path):
         return _FileResponse(file_path)
