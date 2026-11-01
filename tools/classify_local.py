@@ -27,6 +27,7 @@ import math
 import sqlite3
 import sys
 import time
+from datetime import datetime, timezone
 from functools import lru_cache
 from pathlib import Path
 
@@ -447,6 +448,38 @@ def classify_items(con: sqlite3.Connection, protos: dict[str, list[list[float]]]
     return {"n": len(todo), "applied": applied, "dist": dist}
 
 
+# 原型缓存（2026-11-01）：每次跑都重新 embed 语料要 ~78s，而原型只随
+# 种子句/模型/语料缓慢变化。缓存到 models/proto_cache.json，7 天或版本号变化后重建。
+PROTO_CACHE = ROOT / "models" / "proto_cache.json"
+CACHE_VERSION = 1
+CACHE_TTL_DAYS = 7
+
+
+def load_or_build_prototypes(con, force_rebuild: bool = False):
+    """返回 (protos, n_seeds, from_cache)。"""
+    if not force_rebuild:
+        try:
+            data = json.loads(PROTO_CACHE.read_text(encoding="utf-8"))
+            if data.get("version") == CACHE_VERSION:
+                built = datetime.fromisoformat(data["built_at"])
+                if (datetime.now(timezone.utc) - built).days < CACHE_TTL_DAYS:
+                    return data["protos"], int(data.get("seeds", 0)), True
+        except Exception:
+            pass
+    protos, n_seeds = build_prototypes(con)
+    try:
+        PROTO_CACHE.parent.mkdir(parents=True, exist_ok=True)
+        PROTO_CACHE.write_text(json.dumps({
+            "version": CACHE_VERSION,
+            "built_at": datetime.now(timezone.utc).isoformat(),
+            "seeds": n_seeds,
+            "protos": protos,
+        }, ensure_ascii=False), encoding="utf-8")
+    except Exception:
+        pass
+    return protos, n_seeds, False
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--eval", action="store_true", help="跑评测")
@@ -455,14 +488,15 @@ def main() -> int:
     ap.add_argument("--apply", action="store_true", help="写回（events.event_type / items.raw_data）")
     ap.add_argument("--min-score", type=float, default=0.62, help="写回最低相似度（默认 0.62）")
     ap.add_argument("--min-margin", type=float, default=0.03, help="写回最低类别间隔（默认 0.03）")
+    ap.add_argument("--rebuild-protos", action="store_true", help="强制重建原型缓存")
     args = ap.parse_args()
 
     con = sqlite3.connect(f"file:{DB}?mode=ro" if not args.apply else str(DB), uri=bool(not args.apply))
     con.row_factory = sqlite3.Row
     t0 = time.time()
-    protos, n_seeds = build_prototypes(con)
+    protos, n_seeds, cached = load_or_build_prototypes(con, args.rebuild_protos)
     build_s = time.time() - t0
-    print(f"[local] 原型构建: {len(protos)} 类, {n_seeds} 条种子, {build_s:.1f}s")
+    print(f"[local] 原型 {'缓存命中' if cached else '重建'}: {len(protos)} 类, {n_seeds} 条种子, {build_s:.1f}s")
     result: dict = {"build_seconds": round(build_s, 1)}
     if args.eval:
         result["eval"] = evaluate(con, protos)
