@@ -405,11 +405,54 @@ def other_events(con: sqlite3.Connection, protos: dict[str, list[list[float]]],
             "min_score": min_score, "min_margin": min_margin}
 
 
+def classify_items(con: sqlite3.Connection, protos: dict[str, list[list[float]]],
+                   limit: int, apply: bool) -> dict:
+    """本地小模型给文章打主题标签（替代 DeepSeek 逐条分类，0 token）。
+
+    写入 raw_data.local_classification = {topic, score, engine}；
+    brief/地图优先读 local 标签，没有才回退规则分类器。
+    """
+    rows = con.execute(
+        "select id, title, content, raw_data from intel_items "
+        "order by published_at desc limit ?", (limit,)
+    ).fetchall()
+    todo = []
+    for r in rows:
+        try:
+            raw = json.loads(r["raw_data"] or "{}")
+        except Exception:
+            raw = {}
+        if raw.get("local_classification"):
+            continue
+        text = f"{r['title'] or ''} {(r['content'] or '')[:300]}".strip()
+        if len(text) < 12:
+            continue
+        todo.append((r["id"], text, raw))
+    if not todo:
+        return {"n": 0, "applied": 0, "dist": {}}
+    preds = predict(protos, [t for _, t, _ in todo])
+    dist: dict[str, int] = {}
+    applied = 0
+    for (iid, _text, raw), p in zip(todo, preds):
+        dist[p["category"]] = dist.get(p["category"], 0) + 1
+        if apply and p["category"] != "other":
+            raw["local_classification"] = {
+                "topic": p["category"], "score": p["score"], "engine": "bge-small-zh-v1.5",
+            }
+            con.execute("update intel_items set raw_data=? where id=?",
+                        (json.dumps(raw, ensure_ascii=False), iid))
+            applied += 1
+    if apply:
+        con.commit()
+    return {"n": len(todo), "applied": applied, "dist": dist}
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--eval", action="store_true", help="跑评测")
     ap.add_argument("--other-events", type=int, default=0, help="预览 other 事件重分类")
-    ap.add_argument("--apply", action="store_true", help="写回 events.event_type（仅 other 且高置信）")
+    ap.add_argument("--items", type=int, default=0, help="给最近 N 条 intel_items 打本地主题标签")
+    ap.add_argument("--apply", action="store_true", help="写回（events.event_type / items.raw_data）")
     ap.add_argument("--min-score", type=float, default=0.62, help="写回最低相似度（默认 0.62）")
     ap.add_argument("--min-margin", type=float, default=0.03, help="写回最低类别间隔（默认 0.03）")
     args = ap.parse_args()
@@ -428,6 +471,10 @@ def main() -> int:
         con2.row_factory = sqlite3.Row
         result["other_events"] = other_events(con2, protos, args.other_events, args.apply,
                                               args.min_score, args.min_margin)
+    if args.items:
+        con3 = sqlite3.connect(str(DB)) if args.apply else con
+        con3.row_factory = sqlite3.Row
+        result["items"] = classify_items(con3, protos, args.items, args.apply)
     print(json.dumps(result, ensure_ascii=False, indent=2))
     con.close()
     return 0

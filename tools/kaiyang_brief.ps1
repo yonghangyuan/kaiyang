@@ -1,4 +1,4 @@
-﻿# 开阳每日简报 — 06:45 先补 AI 标签（§三 降噪用），07:00 生成简报并维护 latest.md。
+# 开阳每日简报 — 06:45 先补 AI 标签（§三 降噪用），07:00 生成简报并维护 latest.md。
 # 计划任务 KaiyangDailyBrief 每天 07:00 调用（启动目录 KaiyangBoot.cmd 登录时也会跑一次）。
 $ErrorActionPreference = 'SilentlyContinue'
 
@@ -17,8 +17,9 @@ for ($i = 0; $i -lt 12; $i++) {
   Start-Sleep -Seconds 5
 }
 
-# 1) 给最新未分类情报打 AI 标签（失败不阻塞简报）
-& $py "$root\tools\classify_items.py" --limit 40 --concurrency 4 2>&1 | Out-File -Append -Encoding utf8 $log
+# 1) 主题标签：本地小模型（bge-small-zh，0 token、~1ms/条）替代 DeepSeek 逐条分类。
+#    DeepSeek 只留给低置信兜底（当前暂停，需要时再开 classify_items.py）。
+& $py "$root\tools\classify_local.py" --items 300 --apply 2>&1 | Out-File -Append -Encoding utf8 $log
 
 # 2) 出简报；用 python 校验今天文件是否存在（PS 的 $xxx.md 插值在 5.1 下出过 null 坑），没产出就重试一次
 & $py "$root\tools\daily_brief.py" --hours 24 2>&1 | Out-File -Append -Encoding utf8 $log

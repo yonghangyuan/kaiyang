@@ -60,7 +60,7 @@ _AI_TOPIC_LABEL = {
 
 
 def _item_topic(row: sqlite3.Row) -> tuple[str, str]:
-    """返回 (topic, kind)。kind: ai=LLM 标签 / rule=规则分类 / other=兜底。"""
+    """返回 (topic, kind)。kind: ai=DeepSeek / local=本地小模型 / rule=规则 / other=兜底。"""
     raw: dict = {}
     try:
         raw = json.loads(row["raw_data"] or "{}")
@@ -70,6 +70,11 @@ def _item_topic(row: sqlite3.Row) -> tuple[str, str]:
     topic = str(ai.get("topic") or "").lower()
     if topic:
         return topic, "ai"
+    # 本地小模型标签（bge-small-zh，0 token）——2026-11-01 接入
+    local = raw.get("local_classification") or {}
+    lt = str(local.get("topic") or "").lower()
+    if lt and lt != "other":
+        return lt, "local"
     if _rule_classify is not None:
         try:
             return _rule_classify(row["title"] or "", ""), "rule"
