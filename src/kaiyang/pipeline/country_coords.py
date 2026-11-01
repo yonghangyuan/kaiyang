@@ -216,11 +216,36 @@ COUNTRY_COORDS: dict[str, tuple[float, float, str, str]] = {
 }
 
 
-def find_country(text: str) -> tuple[str, float, float, str] | None:
-    """在文本中查找国家/地区名，返回 (name, lat, lng, iso_code)。"""
-    # 按名称长度降序匹配（优先匹配长名称如 "South Korea" 而非 "Korea"）
-    for name in sorted(COUNTRY_COORDS, key=len, reverse=True):
-        if name.lower() in text.lower():
-            lat, lng, iso, cn_name = COUNTRY_COORDS[name]
-            return (name, lat, lng, iso)
+# 2026-11-01 补齐缺失国家：此前"荷兰"不在词表 → "荷兰央行转移黄金，美国存放占比下滑"
+# 被标成美国（用户在地图上看到的张冠李戴之一）。
+COUNTRY_COORDS.setdefault("荷兰", (52.3676, 4.9041, "NL", "荷兰"))
+COUNTRY_COORDS.setdefault("Netherlands", (52.3676, 4.9041, "NL", "荷兰"))
+
+
+def find_country(text: str, title: str | None = None) -> tuple[str, float, float, str] | None:
+    """在文本中查找国家/地区名，返回 (name, lat, lng, iso_code)。
+
+    2026-11-01 重写（修"新闻与地点对不上"）:
+      1. 标题优先——有 title 时只从标题取国家，标题没有再回退正文；
+      2. **首次出现位置优先**——原来按国名长度降序取第一个命中的，导致
+         "乌克兰官员…飞往白俄罗斯"被标成白俄罗斯、"卡塔尔采购美国LNG"被标成卡塔尔；
+         现在谁在文本里先出现就用谁（同位置再按长名优先，避免 Korea 抢 South Korea）。
+    """
+    sources = [title] if title else []
+    sources.append(text or "")
+    for src in sources:
+        if not src:
+            continue
+        low = src.lower()
+        hits: list[tuple[int, int, str]] = []
+        for name in COUNTRY_COORDS:
+            idx = low.find(name.lower())
+            if idx >= 0:
+                hits.append((idx, -len(name), name))
+        if not hits:
+            continue
+        hits.sort()
+        name = hits[0][2]
+        lat, lng, iso, _cn = COUNTRY_COORDS[name]
+        return (name, lat, lng, iso)
     return None
