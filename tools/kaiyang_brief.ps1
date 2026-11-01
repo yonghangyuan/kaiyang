@@ -1,4 +1,4 @@
-# 开阳每日简报 — 06:45 先补 AI 标签（§三 降噪用），07:00 生成简报并维护 latest.md。
+﻿# 开阳每日简报 — 06:45 先补 AI 标签（§三 降噪用），07:00 生成简报并维护 latest.md。
 # 计划任务 KaiyangDailyBrief 每天 07:00 调用（启动目录 KaiyangBoot.cmd 登录时也会跑一次）。
 $ErrorActionPreference = 'SilentlyContinue'
 
