@@ -26,7 +26,9 @@ NO_DATA_HOURS = 6          # 源这么久没抓到任何条目 → no_data
 FROZEN_DAYS = 30           # 最新条目发布时间距今超过 → frozen（存档僵尸feed）
 SILENT_ZERO_ROUNDS = 2     # 连续 N 轮"抓到 0 条" → silent_zero
 ZERO_YIELD_PAUSE = 3       # 连续 N 轮"抓到>0条但 0 新增" → 零产出信号
-ZERO_YIELD_STALE_HOURS = 24  # 2026-10-28: 零产出现象必须持续这么久才允许自动暂停
+ZERO_YIELD_STALE_HOURS = 72  # 2026-11-01: 24h→72h。慢更源（France24 分区/GT 列表页/
+                             # MIT TR AI）一天没新增是常态，24h 门槛会反复误杀；
+                             # 真正死源 72h 后照样会被停，人工可随时 revive。
                              # （防 9-03 那类误杀：90s 轮询下 3 轮只有 4.5 分钟，
                              #  慢更 RSS 一天几条是常态，不该判死）
 
