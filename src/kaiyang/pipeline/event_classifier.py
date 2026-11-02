@@ -68,6 +68,7 @@ _KEYWORDS: dict[str, tuple[str, ...]] = {
         "军演", "军事演习", "演习", "部署", "增兵", "航母", "战机", "舰队", "军方",
         "国防", "导弹试射", "试射", "防空", "军售", "军费", "陆军", "海军", "空军",
         "导弹", "无人机", "核武器", "不扩散", "核计划", "战备",
+        "打击目标", "军事目标", "目标清单", "敌方目标",
         "military exercise", "drill", "troops", "deployment", "aircraft carrier",
         "navy", "air force", "defense ministry", "weapons", "arms sale", "missile test",
         "defense chiefs", "security dialogue", "drone", "uav", "alliance",
@@ -83,6 +84,7 @@ _KEYWORDS: dict[str, tuple[str, ...]] = {
     "political": (
         "选举", "议会", "法案", "政府", "总统", "首相", "制裁", "抗议", "示威",
         "弹劾", "辞职", "声明", "警告", "决议", "投票", "签证", "大选",
+        "特朗普", "拜登", "习近平", "普京", "哈梅内伊", "内塔尼亚胡",
         "election", "parliament", "sanctions", "protest", "president",
         "prime minister", "vote", "embassy", "visa",
     ),
@@ -173,6 +175,11 @@ def classify_scores(title: str, content: str = "") -> dict[str, int]:
 
 def classify_event(title: str, content: str = "") -> str:
     """事件类型（rule-based）。命中最高分；同分按 _PRIORITY；全 0 → other。"""
+    # 2026-11-02: 地震标题优先判灾害——USGS 描述里的 "Port-Olry"
+    # 等英文地名会被 shipping 的 "port" 关键词误命中（M5.4 earthquake 被判航运）。
+    title_low = (title or "").lower()
+    if "earthquake" in title_low or "地震" in (title or ""):
+        return "disaster"
     scores = classify_scores(title, content)
     best = max(scores.values()) if scores else 0
     if best <= 0:
