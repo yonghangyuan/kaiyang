@@ -113,3 +113,14 @@ DSH 里直接说：
 - 待接入：GDELT Global（本机网络不稳定）
 
 > 维护约定：新增源先 `probe_source` 体检再 `propose_source` 进审批箱；停用一律写 `paused_reason` 且以 `manual:` 开头（`revive_paused_sources` 只复活 `zero_yield` 前缀的源，不会误开手工停用项）。
+
+12. ✅ **已修（2026-11-02）关机/休眠断档兜底**：
+    - 现象: 11-01 16:36 后机器关机/休眠，11-02 07:00 简报未自动生成（服务停、采集停）；
+      检查发现三个计划任务都 `StartWhenAvailable=False` 且"电池供电时不启动/切电池即停止"，
+      休眠唤醒后不会补跑。
+    - 修复: KaiyangServer / KaiyangDailyBrief / KaiyangWatchdog 三个任务统一改为
+      `StartWhenAvailable=True`、`DisallowStartIfOnBatteries=False`、`StopIfGoingOnBatteries=False`。
+    - 新增计划任务 **KaiyangWakeRecover**：触发器 = 系统事件
+      `Microsoft-Windows-Power-Troubleshooter / EventID 1`（唤醒），动作 = `tools\kaiyang_server.ps1`
+      （已内含"服务没起就起 + 07:10 后今日简报缺失就补跑"逻辑）。实测手动运行 Last Result=0。
+    - 登录自愈仍由 Startup\KaiyangBoot.cmd 负责（开机登录后 60s 补跑）。
