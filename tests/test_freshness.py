@@ -8,7 +8,11 @@ from datetime import datetime, timedelta, timezone
 
 from kaiyang.db import async_session, engine, Base
 from kaiyang.models import IntelItem, Source, _new_id, _utcnow
-from kaiyang.pipeline.freshness import note_round_result, scan_freshness
+from kaiyang.pipeline.freshness import (
+    ZERO_YIELD_STALE_HOURS,
+    note_round_result,
+    scan_freshness,
+)
 
 
 @pytest.fixture(scope="function")
@@ -52,11 +56,13 @@ async def _mk_intel(sid, title="x") -> None:
         await db.commit()
 
 
-async def _seed_zero_yield(sid, streak=2, hours_ago=25) -> None:
+async def _seed_zero_yield(sid, streak=2, hours_ago=None) -> None:
     """预置零产出计时：streak + zero_yield_since（N 小时前）。
 
-    2026-10-28 起暂停还要求「零新增连续 ≥24h」，只靠连续轮数不够。
+    2026-11-01 起静默门从 24h 放宽到 72h（慢更源误杀），测试跟随常量走。
     """
+    if hours_ago is None:
+        hours_ago = ZERO_YIELD_STALE_HOURS + 1
     from sqlalchemy import select
     async with async_session() as db:
         s = (await db.execute(select(Source).where(Source.id == sid))).scalar_one()
@@ -71,12 +77,12 @@ async def _seed_zero_yield(sid, streak=2, hours_ago=25) -> None:
 
 @pytest.mark.asyncio
 async def test_zero_yield_auto_pause(setup_db):
-    """零新增连续 ≥24h + 近7天曾有产出 → 自动 paused（慢性死亡识别）。"""
+    """零新增连续 ≥72h + 近7天曾有产出 → 自动 paused（慢性死亡识别）。"""
     sid = await _mk_source("慢性死亡源")
     # 先让源有近期产出（满足活跃度门——8-26 误杀后 2026-09-02 加）
     await _mk_intel(sid, "源曾经的产出")
-    await _seed_zero_yield(sid, streak=2, hours_ago=25)
-    await note_round_result(sid, fetched=10, stored=0)  # streak 3 + 静默 25h
+    await _seed_zero_yield(sid, streak=2)
+    await note_round_result(sid, fetched=10, stored=0)  # streak 3 + 静默 ≥72h
     s = await _get_source(sid)
     assert s.status == "paused"
     assert (s.config or {}).get("paused_reason", "").startswith("zero_yield")
@@ -98,9 +104,9 @@ async def test_zero_yield_recent_rounds_no_pause(setup_db):
 
 @pytest.mark.asyncio
 async def test_zero_yield_low_freq_no_pause(setup_db):
-    """低频源（近7天无新条目）即使静默 ≥24h 也不暂停，只记状态。"""
+    """低频源（近7天无新条目）即使静默 ≥72h 也不暂停，只记状态。"""
     sid = await _mk_source("低频源")
-    await _seed_zero_yield(sid, streak=2, hours_ago=25)
+    await _seed_zero_yield(sid, streak=2)
     await note_round_result(sid, fetched=10, stored=0)
     s = await _get_source(sid)
     assert s.status == "active"
