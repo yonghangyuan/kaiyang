@@ -1,4 +1,4 @@
-# 开阳服务守护 — 已监听则退出, 否则隐藏启动 uvicorn。
+﻿# 开阳服务守护 — 已监听则退出, 否则隐藏启动 uvicorn。
 # 计划任务 KaiyangServer 每天 06:50 调用（也可手动: powershell -File tools\kaiyang_server.ps1）
 $ErrorActionPreference = 'SilentlyContinue'
 
