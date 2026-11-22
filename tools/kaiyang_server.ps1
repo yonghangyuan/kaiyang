@@ -38,10 +38,15 @@ if ($listening) {
 # 简报兜底（2026-11-01）: Watchdog 每小时也调用本脚本。07:10 后若今日简报
 # 仍缺失（如开机补跑被系统异常终止），在这里补跑一次，避免整天没有简报。
 if ($now.Hour -ge 7 -and -not (Test-Path $todayBrief)) {
-  # 2026-11-16: 服务刚启动时先等首轮抓取落库，否则补出的简报是"窗口内 0 条"空壳
-  # （今晨登录自愈后 11:00 生成了空简报，11:03 重出才有 443 条）。
-  Write-Output "today brief missing, wait 75s for first fetch"
-  Start-Sleep -Seconds 75
+  # 2026-11-22: 不再固定等 75s——轮询数据库，等最近 30 分钟真的有数据落库
+  # （最多 180s），避免生成"窗口内 0 条"的空壳简报（11-16/11-22 都踩过）。
+  $probe = 'import sqlite3,sys,datetime; c=sqlite3.connect(r"F:\kaiyang\kaiyang.db",timeout=10); m=c.execute("select max(fetched_at) from intel_items").fetchone()[0]; sys.exit(0 if m and m > (datetime.datetime.utcnow()-datetime.timedelta(minutes=30)).isoformat(sep=" ") else 1)'
+  Write-Output "today brief missing, wait for first fetch (max 180s)"
+  for ($j = 0; $j -lt 12; $j++) {
+    & $py -c $probe
+    if ($LASTEXITCODE -eq 0) { Write-Output "fresh data found"; break }
+    Start-Sleep -Seconds 15
+  }
   Write-Output "today brief missing, catch-up run"
   & powershell.exe -NoProfile -ExecutionPolicy Bypass -File "F:\kaiyang\tools\kaiyang_brief.ps1"
 }

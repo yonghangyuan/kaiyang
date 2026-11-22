@@ -428,6 +428,16 @@ def main() -> int:
         return 2
 
     text, meta = build(args.hours, args.top)
+    # 2026-11-22: 长时间关机后 24h 窗口可能是 0 条（今天/昨天都没采集），
+    # 简报就变成"空壳 + 采集链路可能已断"的假告警。自动回填到更宽窗口，
+    # 只要库里还有数据就给出可读的简报（标注回填小时数）。
+    if meta.get("new_items", 0) == 0 and args.hours < 72:
+        fallback = min(args.hours * 3, 72)
+        print(f"[brief] 窗口内 0 条，回填 {fallback}h", file=sys.stderr)
+        text2, meta2 = build(fallback, args.top)
+        if meta2.get("new_items", 0) > 0:
+            text, meta = text2, meta2
+            meta["fallback_hours"] = fallback
     if args.stdout:
         print(text)
         return 0
