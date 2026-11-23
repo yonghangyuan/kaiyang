@@ -31,6 +31,7 @@ ZERO_YIELD_STALE_HOURS = 72  # 2026-11-01: 24h→72h。慢更源（France24 分�
                              # 真正死源 72h 后照样会被停，人工可随时 revive。
                              # （防 9-03 那类误杀：90s 轮询下 3 轮只有 4.5 分钟，
                              #  慢更 RSS 一天几条是常态，不该判死）
+ZERO_YIELD_LOW_FREQ_HOURS = 168  # 2026-11-23: 明确标 low_freq 的慢更源放宽到 7 天
 
 FRESHNESS_STATES = ("fresh", "no_data", "frozen", "silent_zero", "zero_yield")
 
@@ -72,7 +73,10 @@ async def note_round_result(source_id: str, fetched: int, stored: int) -> None:
                     since_dt = datetime.now(timezone.utc)
                     cfg["zero_yield_since"] = since_dt.isoformat()[:19]
                 quiet_h = (datetime.now(timezone.utc) - since_dt).total_seconds() / 3600.0
-                if (zy >= ZERO_YIELD_PAUSE and quiet_h >= ZERO_YIELD_STALE_HOURS
+                stale_hours = (
+                    ZERO_YIELD_LOW_FREQ_HOURS if cfg.get("low_freq") else ZERO_YIELD_STALE_HOURS
+                )
+                if (zy >= ZERO_YIELD_PAUSE and quiet_h >= stale_hours
                         and s.status == "active"):
                     if await _was_recently_productive(s):
                         s.status = "paused"
