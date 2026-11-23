@@ -124,3 +124,8 @@ DSH 里直接说：
       `Microsoft-Windows-Power-Troubleshooter / EventID 1`（唤醒），动作 = `tools\kaiyang_server.ps1`
       （已内含"服务没起就起 + 07:10 后今日简报缺失就补跑"逻辑）。实测手动运行 Last Result=0。
     - 登录自愈仍由 Startup\KaiyangBoot.cmd 负责（开机登录后 60s 补跑）。
+
+13. ✅ **2026-11-23 目标执行：链清理 + 源盘点 + 夜间补齐方案**
+    - 待审批 38 → **0**：批准 30 条（美伊链 10-31→11-23 全部关键节点），驳回 8 条重复/过时项；事件链节点 25 → **55**。
+    - 源盘点：**MIT TR AI** 复活并标 `low_freq`（freshness 新增 `ZERO_YIELD_LOW_FREQ_HOURS=168`，7 天静默门，避免周更源被 72h 误杀）；**France24 亚太** 11-09 后无新条目 → 改 manual 死源备注；中国军网按用户要求保持暂停。active 23 → 24。
+    - 夜间补齐：电源检查发现 AC 供电「在此时间后睡眠=从不」、休眠未启用——夜间断档来自**关机**而非睡眠；新增计划任务 **KaiyangMorningWake**（每天 06:45，WakeToRun=true，动作=server.ps1，确保 07:00 前服务就绪），实测 Result=0。彻底关机时仍由登录自愈补跑（11-23 08:40 自动出简报已实证）。
