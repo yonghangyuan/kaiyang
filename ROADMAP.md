@@ -112,3 +112,19 @@
 3. 分类体系 / 坐标策略 / 源清单连续 2–3 个月不再大改（语义趋于稳定）
 4. 需要与 KYAI 类业务系统对接，把处置动作写回开阳做回放
 
+
+---
+
+## 附: 模块化改造路线 — 2026-11-24 审计结论
+
+> 详见 `analysis/modularity-audit-2026-11-24.md`（含依赖矩阵、长函数清单、目标架构与验收度量）。
+> 当前结论: 开阳不缺模块，缺的是"入口层收敛 + 接口层不越级摸库 + 脚本薄壳化"。
+
+- [ ] **S1** 拆 `main.py`（1-2h，低风险）：app factory + `interface/http/static.py` + `seeds/default_sources.py`
+- [ ] **S2** 为 issues/events/watch/search 建 repository，API 层去掉 61 处直连 `async_session`（1-2 天）
+- [ ] **S3** 统一 taxonomy（11 类 + 版本 + 置信度），规则/AI/本地分类共用（1 天）
+- [ ] **S4** `tools/` 薄壳化：`daily_brief`→`services/briefing`、`classify_local`→`services/classify`（1-1.5 天）
+- [ ] **S5** MCP 与 REST 同源：registry 由 service schema 生成，`_dispatch_tool` 拆表；加 import-linter/ruff（2 天）
+
+验收: `main.py`<200 行 / `api/*` 直连 session=0 / `tools/*` 无 `sqlite3.connect` / 长函数(>80行)≤5 / `services` 覆盖≥70% / 测试 277+ 全绿。
+不动的部分: `sources` 插件层、`approval/discipline` 流程、`models/db` 基础层、种子数据（只挪位置）。
