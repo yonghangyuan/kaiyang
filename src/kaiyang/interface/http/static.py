@@ -169,7 +169,10 @@ main{display:grid;grid-template-columns:1.35fr 1fr 1fr;gap:10px;padding:10px}
 @media(max-width:960px){main{grid-template-columns:1fr}}
 .tv-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
 .tv{border:1px solid #1b2530;border-radius:6px;overflow:hidden;background:#000}
-.tv iframe{width:100%;aspect-ratio:16/9;display:block;border:none}
+.tv video{width:100%;aspect-ratio:16/9;display:block;background:#000}
+.tv .tv-err{display:none;padding:16px;font-size:11px;color:#94a3b8;text-align:center}
+.tv.down video{display:none}
+.tv.down .tv-err{display:block}
 .tv-label{display:flex;align-items:center;gap:6px;padding:4px 8px;font-size:11px;color:#94a3b8;background:#0d131b}
 .dot{width:6px;height:6px;border-radius:50%;background:#ef4444;display:inline-block;animation:pulse 1.6s infinite}
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.25}}
@@ -223,6 +226,7 @@ main{display:grid;grid-template-columns:1.35fr 1fr 1fr;gap:10px;padding:10px}
     <div id="summary"><div class="empty">加载中…</div></div>
   </section>
 </main>
+<script src="/assets/hls.min.js"></script>
 <script>
 var box = document.getElementById('flash');
 function esc(s){ return String(s||'').replace(/[<>&]/g, function(c){ return {'<':'&lt;','>':'&gt;','&':'&amp;'}[c]; }); }
@@ -277,6 +281,28 @@ function loadSummary(){
   });
 }
 loadSummary(); setInterval(loadSummary, 60000);
+
+// 2026-11-25: HLS 直播（hls.js 本地副本）
+(function(){
+  var vids = document.querySelectorAll('video.live-video');
+  Array.prototype.forEach.call(vids, function(v){
+    var src = v.getAttribute('data-src');
+    var box = v.parentNode;
+    function fail(){ box.classList.add('down'); }
+    if (!src) return;
+    if (window.Hls && window.Hls.isSupported()) {
+      var h = new window.Hls({lowLatencyMode:true, maxBufferLength:12});
+      h.on(window.Hls.Events.ERROR, function(_, d){ if (d && d.fatal) fail(); });
+      h.loadSource(src); h.attachMedia(v);
+      v.play().catch(function(){ /* 自动播放被拦，用户点播放 */ });
+    } else if (v.canPlayType('application/vnd.apple.mpegurl')) {
+      v.src = src;
+      v.play().catch(function(){});
+    } else {
+      fail();
+    }
+  });
+})();
 </script>
 </body>
 </html>"""
@@ -313,18 +339,77 @@ async def live_portal():
     except Exception:
         pass
 
-    # 直播画面：B 站转播房（LiveTVPanel 同款房间，国内必达；房间号失效时换号）
-    rooms = [("央视新闻", "8178490"), ("总台新闻·二路", "21623527"),
-             ("总台新闻·三路", "22142427")]
+    # 直播画面（2026-11-25）: B 站 h5 嵌入页已失效（会重定向到 B 站首页/被拦），
+    # 改用公共 HLS 转播源（iptv-org 中国列表，HTTP m3u8；浏览器需 hls.js）。
+    rooms = [("CCTV-13 新闻", "cctv13hd"), ("CCTV-1 综合", "cctv1hd"),
+             ("CCTV-12 社会与法", "cctv12hd")]
     tv_html = "".join(
-        '<div class="tv"><iframe src="https://live.bilibili.com/h5/{room}" '
-        'allow="autoplay; fullscreen; encrypted-media" loading="lazy"></iframe>'
+        '<div class="tv" data-idx="{i}"><video class="live-video" muted playsinline controls autoplay '
+        'poster="" data-src="/live/tv/{slug}.m3u8"></video>'
+        '<div class="tv-err">该路暂不可播（源站可能限流）<br>'
+        '<a href="/live/tv/{slug}.m3u8" target="_blank" rel="noopener">直接打开 m3u8</a></div>'
         '<div class="tv-label"><span class="dot"></span>{name}</div></div>'.format(
-            room=room, name=name)
-        for name, room in rooms
+            i=i, slug=slug, name=name)
+        for i, (name, slug) in enumerate(rooms)
     )
     html = Template(_LIVE_PORTAL_TPL).safe_substitute(
         ITEMS_TODAY=stats["items_today"], PENDING=stats["pending"],
         EVENTS=stats["events"], FLASH24=stats["flash"], TV_HTML=tv_html,
     )
     return HTMLResponse(html)
+
+
+# ── 直播 HLS 代理（2026-11-25）────────────────────────────────
+# 公共转播源不允许跨域取 m3u8/ts（浏览器会被 CORS 拦），这里同源转发。
+_TV_UPSTREAM = {
+    "cctv13hd": "http://74.91.26.218:82/live/cctv13hd.m3u8",
+    "cctv1hd": "http://74.91.26.218:82/live/cctv1hd.m3u8",
+    "cctv12hd": "http://74.91.26.218:82/live/cctv12hd.m3u8",
+}
+_tv_base: dict[str, tuple[str, str]] = {}
+
+
+@router.get("/live/tv/{slug}.m3u8")
+async def live_tv_playlist(slug: str):
+    from urllib.parse import parse_qs, urlsplit
+
+    import httpx
+    from fastapi import Response
+
+    upstream = _TV_UPSTREAM.get(slug)
+    if not upstream:
+        return Response("unknown channel", status_code=404)
+    try:
+        async with httpx.AsyncClient(follow_redirects=True, timeout=10) as c:
+            r = await c.get(upstream)
+    except Exception:
+        return Response("upstream unreachable", status_code=502)
+    if r.status_code != 200 or "#EXTM3U" not in r.text[:32]:
+        return Response("upstream error", status_code=502)
+    final = urlsplit(str(r.url))
+    base = str(r.url).rsplit("/", 1)[0]
+    _tv_base[slug] = (base, final.query)
+    out = []
+    for line in r.text.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        out.append(line if line.startswith("#") else f"/live/tv/{slug}/seg/{line}")
+    return Response("\n".join(out), media_type="application/vnd.apple.mpegurl")
+
+
+@router.get("/live/tv/{slug}/seg/{name:path}")
+async def live_tv_segment(slug: str, name: str):
+    import httpx
+    from fastapi import Response
+
+    base, query = _tv_base.get(slug, ("", ""))
+    if not base:
+        return Response("playlist not loaded", status_code=404)
+    url = f"{base}/{name}" + (f"?{query}" if query else "")
+    try:
+        async with httpx.AsyncClient(follow_redirects=True, timeout=20) as c:
+            r = await c.get(url)
+    except Exception:
+        return Response("segment unreachable", status_code=502)
+    return Response(r.content, media_type=r.headers.get("content-type", "video/mp2t"))
