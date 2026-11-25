@@ -12,7 +12,7 @@ from datetime import datetime, timezone
 
 from kaiyang.db import async_session, engine, Base
 from kaiyang.models import Source, IntelItem, _new_id
-from kaiyang.main import _seed_default_sources
+from kaiyang.seeds.bootstrap import seed_default_sources as _seed_default_sources
 from kaiyang.sources.rss_source import RSSSource
 from sqlalchemy import select
 
